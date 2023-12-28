@@ -4,6 +4,14 @@ import (
 	"net/http"
 )
 
+const (
+	MethodAll    = "ALL"
+	MethodGet    = http.MethodGet
+	MethodPost   = http.MethodPost
+	MethodPut    = http.MethodPut
+	MethodDelete = http.MethodDelete
+)
+
 type RouteHandler interface {
 	ServeHTTP(http.ResponseWriter, *http.Request)
 }
@@ -15,8 +23,7 @@ func (f RouteHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type routerEntry struct {
-	h      RouteHandler
-	method string
+	mh map[string]RouteHandler
 }
 
 type Router struct {
@@ -29,7 +36,14 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	e := ro.m[path]
 
-	e.h.ServeHTTP(w, r)
+	h, ok := e.mh[r.Method]
+	if !ok {
+		if h, ok := e.mh["ALL"]; ok {
+			h.ServeHTTP(w, r)
+			return
+		}
+	}
+	h.ServeHTTP(w, r)
 }
 
 func (ro *Router) register(pattern string, handler RouteHandler, method string) {
@@ -45,10 +59,18 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 		ro.m = make(map[string]routerEntry)
 	}
 
-	e := routerEntry{
-		h:      handler,
-		method: method,
+	e, ok := ro.m[pattern]
+	if ok {
+		if _, ok := e.mh[method]; ok {
+			panic("router: multiple registration into " + pattern)
+		}
+	} else {
+		e = routerEntry{
+			mh: make(map[string]RouteHandler),
+		}
 	}
+
+	e.mh[method] = handler
 
 	ro.m[pattern] = e
 }
@@ -63,20 +85,20 @@ func (ro *Router) registerFunc(pattern string, handler func(w http.ResponseWrite
 // Records the given pattern and handler to handle the corresponding path.
 // Use is a generic method correspondent
 func (ro *Router) Use(pattern string, handler RouteHandler) {
-	ro.register(pattern, handler, "")
+	ro.register(pattern, handler, MethodAll)
 }
 
 // Instead Use method, this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
 func (ro *Router) UseFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
-	ro.registerFunc(pattern, RouteHandlerFunc(handler), "")
+	ro.registerFunc(pattern, RouteHandlerFunc(handler), MethodAll)
 }
 
 // Records the given pattern and handler to handle the corresponding path only on GET method.
 func (ro *Router) Get(pattern string, handler RouteHandler) {
-	ro.register(pattern, handler, http.MethodGet)
+	ro.register(pattern, handler, MethodGet)
 }
 
 func (ro *Router) GetFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
-	ro.registerFunc(pattern, handler, http.MethodGet)
+	ro.registerFunc(pattern, handler, MethodGet)
 }

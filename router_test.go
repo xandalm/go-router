@@ -16,6 +16,48 @@ var dummyHandler = &dummyRouteHandler{}
 var dummyHandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 }
 
+func Test_Register(t *testing.T) {
+
+	t.Run("panic on empty pattern", func(t *testing.T) {
+		router := &Router{}
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("didn't panic")
+			}
+		}()
+		router.register("", dummyHandler, MethodAll)
+	})
+
+	t.Run("panic on nil handler", func(t *testing.T) {
+		router := &Router{}
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("didn't panic")
+			}
+		}()
+
+		router.register("/path", nil, MethodAll)
+	})
+
+	t.Run("panic on re-register", func(t *testing.T) {
+		router := &Router{}
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("didn't panic")
+			}
+		}()
+
+		router.register("/path", dummyHandler, MethodAll)
+		router.register("/path", dummyHandler, MethodAll)
+	})
+}
+
 func TestUse(t *testing.T) {
 
 	t.Run("panic on empty pattern", func(t *testing.T) {
@@ -51,7 +93,7 @@ func TestUse(t *testing.T) {
 		assertRegistered(t, router, "/user")
 
 		e := router.m["/user"]
-		assertHandler(t, e.h, dummyHandler)
+		assertHandler(t, e.mh["ALL"], dummyHandler)
 	})
 }
 
@@ -91,7 +133,7 @@ func TestUseFunc(t *testing.T) {
 		assertRegistered(t, router, "/user")
 
 		e := router.m["/user"]
-		assertHandlerFunc(t, e.h, RouteHandlerFunc(dummyHandlerFunc))
+		assertHandlerFunc(t, e.mh["ALL"], RouteHandlerFunc(dummyHandlerFunc))
 	})
 }
 
@@ -104,7 +146,7 @@ func TestGet(t *testing.T) {
 		assertRegistered(t, router, "/products")
 
 		e := router.m["/products"]
-		assertHandler(t, e.h, dummyHandler)
+		assertHandler(t, e.mh[http.MethodGet], dummyHandler)
 	})
 }
 
@@ -117,7 +159,7 @@ func TestGetFunc(t *testing.T) {
 		assertRegistered(t, router, "/products")
 
 		e := router.m["/products"]
-		assertHandlerFunc(t, e.h, RouteHandlerFunc(dummyHandlerFunc))
+		assertHandlerFunc(t, e.mh[http.MethodGet], RouteHandlerFunc(dummyHandlerFunc))
 	})
 }
 
