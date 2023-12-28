@@ -1,6 +1,8 @@
 package router
 
-import "net/http"
+import (
+	"net/http"
+)
 
 type RouteHandler interface {
 	ServeHTTP(http.ResponseWriter, *http.Request)
@@ -12,22 +14,25 @@ func (f RouteHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f(w, r)
 }
 
+type routerEntry struct {
+	h      RouteHandler
+	method string
+}
+
 type Router struct {
-	m map[string]RouteHandler
+	m map[string]routerEntry
 }
 
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	path := r.URL.Path
 
-	h := ro.m[path]
+	e := ro.m[path]
 
-	h.ServeHTTP(w, r)
+	e.h.ServeHTTP(w, r)
 }
 
-// Records the given pattern and handler to handle the corresponding path.
-// Use is a generic method correspondent
-func (ro *Router) Use(pattern string, handler RouteHandler) {
+func (ro *Router) use(pattern string, handler RouteHandler, method string) {
 	if pattern == "" {
 		panic("router: invalid pattern")
 	}
@@ -37,9 +42,21 @@ func (ro *Router) Use(pattern string, handler RouteHandler) {
 	}
 
 	if ro.m == nil {
-		ro.m = make(map[string]RouteHandler)
+		ro.m = make(map[string]routerEntry)
 	}
-	ro.m[pattern] = handler
+
+	e := routerEntry{
+		h:      handler,
+		method: method,
+	}
+
+	ro.m[pattern] = e
+}
+
+// Records the given pattern and handler to handle the corresponding path.
+// Use is a generic method correspondent
+func (ro *Router) Use(pattern string, handler RouteHandler) {
+	ro.use(pattern, handler, "")
 }
 
 // Instead Use method, this method get a handler as a func.
@@ -49,4 +66,8 @@ func (ro *Router) UseFunc(pattern string, handler func(w http.ResponseWriter, r 
 		panic("router: nil handler")
 	}
 	ro.Use(pattern, RouteHandlerFunc(handler))
+}
+
+func (ro *Router) Get(pattern string, handler RouteHandler) {
+	ro.use(pattern, handler, http.MethodGet)
 }

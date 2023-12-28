@@ -2,7 +2,6 @@ package router
 
 import (
 	"net/http"
-	"reflect"
 	"testing"
 )
 
@@ -10,6 +9,10 @@ type dummyRouteHandler struct{}
 
 func (h *dummyRouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+}
+
+var dummyHandler = &dummyRouteHandler{}
+var dummyHandlerFunc = func(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestUse(t *testing.T) {
@@ -23,7 +26,7 @@ func TestUse(t *testing.T) {
 				t.Error("didn't panic")
 			}
 		}()
-		router.Use("", &dummyRouteHandler{})
+		router.Use("", dummyHandler)
 	})
 
 	t.Run("panic on nil handler", func(t *testing.T) {
@@ -42,18 +45,12 @@ func TestUse(t *testing.T) {
 	t.Run("add /user pattern", func(t *testing.T) {
 		router := &Router{}
 
-		dummyHandler := &dummyRouteHandler{}
-
 		router.Use("/user", dummyHandler)
 
-		handler, ok := router.m["/user"]
-		if !ok {
-			t.Errorf("not registered the pattern")
-		}
+		assertRegistered(t, router, "/user")
 
-		if !reflect.DeepEqual(dummyHandler, handler) {
-			t.Errorf("got handler %+v, but want %+v", handler, dummyHandler)
-		}
+		e := router.m["/user"]
+		assertHandler(t, e.h, dummyHandler)
 	})
 }
 
@@ -69,10 +66,7 @@ func TestUseFunc(t *testing.T) {
 			}
 		}()
 
-		dummyHandler := func(w http.ResponseWriter, r *http.Request) {
-		}
-
-		router.UseFunc("", dummyHandler)
+		router.UseFunc("", dummyHandlerFunc)
 	})
 
 	t.Run("panic on nil handler", func(t *testing.T) {
@@ -91,14 +85,37 @@ func TestUseFunc(t *testing.T) {
 	t.Run("add /user pattern", func(t *testing.T) {
 		router := &Router{}
 
-		dummyHandler := func(w http.ResponseWriter, r *http.Request) {
-		}
+		router.UseFunc("/user", dummyHandlerFunc)
 
-		router.UseFunc("/user", dummyHandler)
-
-		_, ok := router.m["/user"]
-		if !ok {
-			t.Errorf("not registered the pattern")
-		}
+		assertRegistered(t, router, "/user")
 	})
+}
+
+func TestGet(t *testing.T) {
+	t.Run("add /products pattern", func(t *testing.T) {
+		router := &Router{}
+
+		router.Get("/products", dummyHandler)
+
+		assertRegistered(t, router, "/products")
+
+		e := router.m["/products"]
+		assertHandler(t, e.h, dummyHandler)
+	})
+}
+
+func assertRegistered(t testing.TB, router *Router, path string) {
+	t.Helper()
+
+	if _, ok := router.m[path]; !ok {
+		t.Fatal("not registered the pattern")
+	}
+}
+
+func assertHandler(t testing.TB, got, want RouteHandler) {
+	t.Helper()
+
+	if got != want {
+		t.Errorf("got handler %v, but want %v", got, want)
+	}
 }
