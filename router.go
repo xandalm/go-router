@@ -2,6 +2,7 @@ package router
 
 import (
 	"net/http"
+	"sync"
 )
 
 const (
@@ -27,7 +28,8 @@ type routerEntry struct {
 }
 
 type Router struct {
-	m map[string]routerEntry
+	mu sync.RWMutex
+	m  map[string]routerEntry
 }
 
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +49,9 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ro *Router) register(pattern string, handler RouteHandler, method string) {
+	ro.mu.Lock()
+	defer ro.mu.Unlock()
+
 	if pattern == "" {
 		panic("router: invalid pattern")
 	}
@@ -88,7 +93,7 @@ func (ro *Router) Use(pattern string, handler RouteHandler) {
 	ro.register(pattern, handler, MethodAll)
 }
 
-// Instead Use method, this method get a handler as a func.
+// Similar to Use method, but this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
 func (ro *Router) UseFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
 	ro.registerFunc(pattern, RouteHandlerFunc(handler), MethodAll)
@@ -99,6 +104,8 @@ func (ro *Router) Get(pattern string, handler RouteHandler) {
 	ro.register(pattern, handler, MethodGet)
 }
 
+// Similar to Get method, but this method get a handler as a func.
+// And wrap it, to act like a RouteHandler.
 func (ro *Router) GetFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
 	ro.registerFunc(pattern, handler, MethodGet)
 }

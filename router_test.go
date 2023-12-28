@@ -58,19 +58,7 @@ func Test_Register(t *testing.T) {
 	})
 }
 
-func TestUse(t *testing.T) {
-
-	t.Run("panic on empty pattern", func(t *testing.T) {
-		router := &Router{}
-
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Error("didn't panic")
-			}
-		}()
-		router.Use("", dummyHandler)
-	})
+func Test_RegisterFunc(t *testing.T) {
 
 	t.Run("panic on nil handler", func(t *testing.T) {
 		router := &Router{}
@@ -82,8 +70,11 @@ func TestUse(t *testing.T) {
 			}
 		}()
 
-		router.Use("/path", nil)
+		router.registerFunc("/path", nil, MethodAll)
 	})
+}
+
+func TestUse(t *testing.T) {
 
 	t.Run("add /user pattern", func(t *testing.T) {
 		router := &Router{}
@@ -93,37 +84,11 @@ func TestUse(t *testing.T) {
 		assertRegistered(t, router, "/user")
 
 		e := router.m["/user"]
-		assertHandler(t, e.mh["ALL"], dummyHandler)
+		assertHandler(t, e.mh[MethodAll], dummyHandler)
 	})
 }
 
 func TestUseFunc(t *testing.T) {
-
-	t.Run("panic on empty pattern", func(t *testing.T) {
-		router := &Router{}
-
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Error("didn't panic")
-			}
-		}()
-
-		router.UseFunc("", dummyHandlerFunc)
-	})
-
-	t.Run("panic on nil handler", func(t *testing.T) {
-		router := &Router{}
-
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Error("didn't panic")
-			}
-		}()
-
-		router.UseFunc("/path", nil)
-	})
 
 	t.Run("add /user pattern", func(t *testing.T) {
 		router := &Router{}
@@ -133,7 +98,7 @@ func TestUseFunc(t *testing.T) {
 		assertRegistered(t, router, "/user")
 
 		e := router.m["/user"]
-		assertHandlerFunc(t, e.mh["ALL"], RouteHandlerFunc(dummyHandlerFunc))
+		assertHandlerFunc(t, e.mh[MethodAll], RouteHandlerFunc(dummyHandlerFunc))
 	})
 }
 
@@ -146,7 +111,7 @@ func TestGet(t *testing.T) {
 		assertRegistered(t, router, "/products")
 
 		e := router.m["/products"]
-		assertHandler(t, e.mh[http.MethodGet], dummyHandler)
+		assertHandler(t, e.mh[MethodGet], dummyHandler)
 	})
 }
 
@@ -159,7 +124,7 @@ func TestGetFunc(t *testing.T) {
 		assertRegistered(t, router, "/products")
 
 		e := router.m["/products"]
-		assertHandlerFunc(t, e.mh[http.MethodGet], RouteHandlerFunc(dummyHandlerFunc))
+		assertHandlerFunc(t, e.mh[MethodGet], RouteHandlerFunc(dummyHandlerFunc))
 	})
 }
 
