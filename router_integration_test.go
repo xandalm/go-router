@@ -17,33 +17,77 @@ func (h *MockRouterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.OnHandleFunc(w, r)
 }
 
-func TestUseOnGET(t *testing.T) {
+type uriTest struct {
+	uri            string
+	expectedStatus int
+	expectedBody   string
+}
+
+type testPathCase struct {
+	path    string
+	handler *MockRouterHandler
+	tests   []uriTest
+}
+
+func newDummyURI(path string) string {
+	return "http://site.com" + path
+}
+
+func TestUseOnGETRequest(t *testing.T) {
 	router := &router.Router{}
 
-	handler := &MockRouterHandler{
-		OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprint(w, `[{"Name": "Alex"}, {"Name": "Andre"}]`)
+	cases := []testPathCase{
+		{
+			path: "/v1/users",
+			handler: &MockRouterHandler{
+				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprint(w, `[{"Name": "Alex"}, {"Name": "Andre"}]`)
+				},
+			},
+			tests: []uriTest{
+				{newDummyURI("/v1/users"), http.StatusOK, `[{"Name": "Alex"}, {"Name": "Andre"}]`},
+			},
+		},
+		{
+			path: "/users",
+			handler: &MockRouterHandler{
+				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprint(w, `[{"Name": "Alex"}, {"Name": "Andre"}]`)
+				},
+			},
+			tests: []uriTest{
+				{newDummyURI("/users"), http.StatusOK, `[{"Name": "Alex"}, {"Name": "Andre"}]`},
+			},
 		},
 	}
 
-	router.Use("/users", handler)
+	for _, c := range cases {
 
-	request, _ := http.NewRequest(http.MethodGet, "http://site.com/users", nil)
-	response := httptest.NewRecorder()
+		t.Run(fmt.Sprintf("after added %q path", c.path), func(t *testing.T) {
 
-	router.ServeHTTP(response, request)
+			router.Use(c.path, c.handler)
 
-	status := response.Code
-	expectedStatus := http.StatusOK
+			for _, test := range c.tests {
+				t.Run(fmt.Sprintf("GET on %q", test.uri), func(t *testing.T) {
 
-	if status != expectedStatus {
-		t.Errorf("got status %d, but want %d", status, expectedStatus)
-	}
+					request, _ := http.NewRequest(http.MethodGet, test.uri, nil)
+					response := httptest.NewRecorder()
 
-	body := response.Body.String()
-	expectedBody := `[{"Name": "Alex"}, {"Name": "Andre"}]`
+					router.ServeHTTP(response, request)
 
-	if body != expectedBody {
-		t.Errorf("got body %q, but want %q", body, expectedBody)
+					status := response.Code
+
+					if status != test.expectedStatus {
+						t.Errorf("got status %d, but want %d", status, test.expectedStatus)
+					}
+
+					body := response.Body.String()
+
+					if body != test.expectedBody {
+						t.Errorf("got body %q, but want %q", body, test.expectedBody)
+					}
+				})
+			}
+		})
 	}
 }
