@@ -32,7 +32,7 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.h.ServeHTTP(w, r)
 }
 
-func (ro *Router) use(pattern string, handler RouteHandler, method string) {
+func (ro *Router) register(pattern string, handler RouteHandler, method string) {
 	if pattern == "" {
 		panic("router: invalid pattern")
 	}
@@ -53,21 +53,30 @@ func (ro *Router) use(pattern string, handler RouteHandler, method string) {
 	ro.m[pattern] = e
 }
 
+func (ro *Router) registerFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request), method string) {
+	if handler == nil {
+		panic("router: nil handler")
+	}
+	ro.register(pattern, RouteHandlerFunc(handler), method)
+}
+
 // Records the given pattern and handler to handle the corresponding path.
 // Use is a generic method correspondent
 func (ro *Router) Use(pattern string, handler RouteHandler) {
-	ro.use(pattern, handler, "")
+	ro.register(pattern, handler, "")
 }
 
 // Instead Use method, this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
 func (ro *Router) UseFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
-	if handler == nil {
-		panic("router: nil handler")
-	}
-	ro.Use(pattern, RouteHandlerFunc(handler))
+	ro.registerFunc(pattern, RouteHandlerFunc(handler), "")
 }
 
+// Records the given pattern and handler to handle the corresponding path only on GET method.
 func (ro *Router) Get(pattern string, handler RouteHandler) {
-	ro.use(pattern, handler, http.MethodGet)
+	ro.register(pattern, handler, http.MethodGet)
+}
+
+func (ro *Router) GetFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
+	ro.registerFunc(pattern, handler, http.MethodGet)
 }

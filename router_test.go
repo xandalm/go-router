@@ -2,6 +2,7 @@ package router
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 )
 
@@ -88,6 +89,9 @@ func TestUseFunc(t *testing.T) {
 		router.UseFunc("/user", dummyHandlerFunc)
 
 		assertRegistered(t, router, "/user")
+
+		e := router.m["/user"]
+		assertHandlerFunc(t, e.h, RouteHandlerFunc(dummyHandlerFunc))
 	})
 }
 
@@ -104,6 +108,19 @@ func TestGet(t *testing.T) {
 	})
 }
 
+func TestGetFunc(t *testing.T) {
+	t.Run("add /products pattern", func(t *testing.T) {
+		router := &Router{}
+
+		router.GetFunc("/products", dummyHandlerFunc)
+
+		assertRegistered(t, router, "/products")
+
+		e := router.m["/products"]
+		assertHandlerFunc(t, e.h, RouteHandlerFunc(dummyHandlerFunc))
+	})
+}
+
 func assertRegistered(t testing.TB, router *Router, path string) {
 	t.Helper()
 
@@ -117,5 +134,13 @@ func assertHandler(t testing.TB, got, want RouteHandler) {
 
 	if got != want {
 		t.Errorf("got handler %v, but want %v", got, want)
+	}
+}
+
+func assertHandlerFunc(t testing.TB, got, want RouteHandler) {
+	t.Helper()
+
+	if !reflect.DeepEqual(reflect.ValueOf(got), reflect.ValueOf(want)) {
+		t.Errorf("got handler %#v, but want %#v", got, want)
 	}
 }
