@@ -1,11 +1,16 @@
 package router
 
 import (
+	"net/http"
 	"reflect"
 	"testing"
 )
 
 type dummyRouteHandler struct{}
+
+func (h *dummyRouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+}
 
 func TestUse(t *testing.T) {
 
