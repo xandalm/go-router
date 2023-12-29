@@ -111,3 +111,36 @@ func (ro *Router) Get(pattern string, handler RouteHandler) {
 func (ro *Router) GetFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
 	ro.registerFunc(pattern, handler, MethodGet)
 }
+
+// Records the given pattern and handler to handle the corresponding path only on POST method.
+func (ro *Router) Post(pattern string, handler RouteHandler) {
+	ro.register(pattern, handler, MethodPost)
+}
+
+// Similar to Post method, but this method get a handler as a func.
+// And wrap it, to act like a RouteHandler.
+func (ro *Router) PostFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
+	ro.registerFunc(pattern, handler, MethodPost)
+}
+
+// Records the given pattern and handler to handle the corresponding path only on PUT method.
+func (ro *Router) Put(pattern string, handler RouteHandler) {
+	ro.register(pattern, handler, MethodPut)
+}
+
+// Similar to Put method, but this method get a handler as a func.
+// And wrap it, to act like a RouteHandler.
+func (ro *Router) PutFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
+	ro.registerFunc(pattern, handler, MethodPut)
+}
+
+// Records the given pattern and handler to handle the corresponding path only on DELETE method.
+func (ro *Router) Delete(pattern string, handler RouteHandler) {
+	ro.register(pattern, handler, MethodDelete)
+}
+
+// Similar to Delete method, but this method get a handler as a func.
+// And wrap it, to act like a RouteHandler.
+func (ro *Router) DeleteFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
+	ro.registerFunc(pattern, handler, MethodDelete)
+}

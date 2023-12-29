@@ -168,9 +168,9 @@ func TestUse(t *testing.T) {
 		},
 	}
 
-	router := &Router{}
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("add %q pattern", c.path), func(t *testing.T) {
+			router := &Router{}
 
 			router.Use(c.path, c.handler)
 
@@ -204,16 +204,149 @@ func TestGet(t *testing.T) {
 			tests: []uriTest{
 				{newDummyURI("/products"), http.MethodGet, http.StatusOK, `[{"Name": "Tea"}, {"Name": "Cup Noodle"}]`},
 				{newDummyURI("/products"), http.MethodPost, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPut, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodDelete, http.StatusNotFound, ""},
 			},
 		},
 	}
 
-	router := &Router{}
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("add path %q", c.path), func(t *testing.T) {
+			router := &Router{}
+
+			router.Get(c.path, c.handler)
+
+			for _, tt := range c.tests {
+				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
+					request, _ := http.NewRequest(tt.method, tt.uri, nil)
+					response := httptest.NewRecorder()
+
+					router.ServeHTTP(response, request)
+
+					if response.Code != tt.status {
+						t.Errorf("got status %q, but want %q", response.Code, tt.status)
+					}
+
+					body := response.Body.String()
+					if body != tt.body {
+						t.Errorf("got body %q, but want %q", body, tt.body)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestPost(t *testing.T) {
+
+	cases := []routeCase{
+		{
+			path: "/products",
+			handler: &MockRouterHandler{
+				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {},
+			},
+			tests: []uriTest{
+				{newDummyURI("/products"), http.MethodPost, http.StatusOK, ""},
+				{newDummyURI("/products"), http.MethodGet, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPut, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodDelete, http.StatusNotFound, ""},
+			},
+		},
+	}
 
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("add path %q", c.path), func(t *testing.T) {
+			router := &Router{}
 
-			router.Get(c.path, c.handler)
+			router.Post(c.path, c.handler)
+
+			for _, tt := range c.tests {
+				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
+					request, _ := http.NewRequest(tt.method, tt.uri, nil)
+					response := httptest.NewRecorder()
+
+					router.ServeHTTP(response, request)
+
+					if response.Code != tt.status {
+						t.Errorf("got status %q, but want %q", response.Code, tt.status)
+					}
+
+					body := response.Body.String()
+					if body != tt.body {
+						t.Errorf("got body %q, but want %q", body, tt.body)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestPut(t *testing.T) {
+
+	cases := []routeCase{
+		{
+			path: "/products",
+			handler: &MockRouterHandler{
+				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {},
+			},
+			tests: []uriTest{
+				{newDummyURI("/products"), http.MethodPut, http.StatusOK, ""},
+				{newDummyURI("/products"), http.MethodGet, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPost, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodDelete, http.StatusNotFound, ""},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("add path %q", c.path), func(t *testing.T) {
+			router := &Router{}
+
+			router.Put(c.path, c.handler)
+
+			for _, tt := range c.tests {
+				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
+					request, _ := http.NewRequest(tt.method, tt.uri, nil)
+					response := httptest.NewRecorder()
+
+					router.ServeHTTP(response, request)
+
+					if response.Code != tt.status {
+						t.Errorf("got status %q, but want %q", response.Code, tt.status)
+					}
+
+					body := response.Body.String()
+					if body != tt.body {
+						t.Errorf("got body %q, but want %q", body, tt.body)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestDelete(t *testing.T) {
+
+	cases := []routeCase{
+		{
+			path: "/products",
+			handler: &MockRouterHandler{
+				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {},
+			},
+			tests: []uriTest{
+				{newDummyURI("/products"), http.MethodDelete, http.StatusOK, ""},
+				{newDummyURI("/products"), http.MethodGet, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPut, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPost, http.StatusNotFound, ""},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("add path %q", c.path), func(t *testing.T) {
+			router := &Router{}
+
+			router.Delete(c.path, c.handler)
 
 			for _, tt := range c.tests {
 				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
