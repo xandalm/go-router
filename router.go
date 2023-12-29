@@ -27,12 +27,30 @@ type routerEntry struct {
 	mh map[string]RouteHandler
 }
 
+func NotFoundHandler() RouteHandler {
+	return RouteHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+}
+
 type Router struct {
 	mu sync.RWMutex
 	m  map[string]routerEntry
 }
 
+func NewRouter() *Router {
+	return &Router{}
+}
+
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	_, h := ro.Handler(r)
+	h.ServeHTTP(w, r)
+}
+
+func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler) {
+	ro.mu.RLock()
+	defer ro.mu.RUnlock()
 
 	path := r.URL.Path
 
@@ -40,14 +58,15 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h, ok := e.mh[r.Method]
 	if ok {
-		h.ServeHTTP(w, r)
+		p = path
 		return
 	}
-	if h, ok := e.mh["ALL"]; ok {
-		h.ServeHTTP(w, r)
+	if _, ok := e.mh[MethodAll]; ok {
+		h = e.mh[MethodAll]
+		p = path
 		return
 	}
-	w.WriteHeader(http.StatusNotFound)
+	return "", NotFoundHandler()
 }
 
 func (ro *Router) register(pattern string, handler RouteHandler, method string) {

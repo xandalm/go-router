@@ -60,8 +60,8 @@ func Test_Register(t *testing.T) {
 	})
 
 	cases := []struct {
-		path   string
-		method string
+		pattern string
+		method  string
 	}{
 		{"/users", MethodAll},
 		{"/api/users", MethodAll},
@@ -74,13 +74,13 @@ func Test_Register(t *testing.T) {
 	router := &Router{}
 
 	for _, c := range cases {
-		t.Run(fmt.Sprintf(`add %q to %s`, c.path, c.method), func(t *testing.T) {
+		t.Run(fmt.Sprintf(`add %q to %s`, c.pattern, c.method), func(t *testing.T) {
 
-			router.register(c.path, dummyHandler, c.method)
+			router.register(c.pattern, dummyHandler, c.method)
 
-			assertRegistered(t, router, c.path)
+			assertRegistered(t, router, c.pattern)
 
-			e := router.m[c.path]
+			e := router.m[c.pattern]
 			assertHandler(t, e.mh[c.method], dummyHandler)
 		})
 	}
@@ -125,6 +125,28 @@ func Test_RegisterFunc(t *testing.T) {
 			assertHandlerFunc(t, e.mh[c.method], RouteHandlerFunc(dummyHandlerFunc))
 		})
 	}
+}
+
+func TestHandler(t *testing.T) {
+	t.Run("returns pattern, handler", func(t *testing.T) {
+		router := NewRouter()
+
+		pattern := "/path"
+		path := "/path"
+
+		router.Use(pattern, dummyHandler)
+
+		request, _ := http.NewRequest(http.MethodGet, newDummyURI(path), nil)
+
+		var pat string
+		var h RouteHandler
+		pat, h = router.Handler(request)
+
+		if pat != pattern {
+			t.Errorf("got pattern %q, but want %q", pat, pattern)
+		}
+		assertHandler(t, dummyHandler, h)
+	})
 }
 
 type MockRouterHandler struct {
