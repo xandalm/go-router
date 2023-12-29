@@ -1,7 +1,9 @@
 package router
 
 import (
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 )
@@ -43,7 +45,7 @@ func Test_Register(t *testing.T) {
 		router.register("/path", nil, MethodAll)
 	})
 
-	t.Run("panic on re-register", func(t *testing.T) {
+	t.Run("panic on re-register same pattern and method", func(t *testing.T) {
 		router := &Router{}
 
 		defer func() {
@@ -56,6 +58,32 @@ func Test_Register(t *testing.T) {
 		router.register("/path", dummyHandler, MethodAll)
 		router.register("/path", dummyHandler, MethodAll)
 	})
+
+	cases := []struct {
+		path   string
+		method string
+	}{
+		{"/users", MethodAll},
+		{"/api/users", MethodAll},
+		{"/users", MethodGet},
+		{"/users", MethodPost},
+		{"/users", MethodPut},
+		{"/users", MethodDelete},
+	}
+
+	router := &Router{}
+
+	for _, c := range cases {
+		t.Run(fmt.Sprintf(`add %q to %s`, c.path, c.method), func(t *testing.T) {
+
+			router.register(c.path, dummyHandler, c.method)
+
+			assertRegistered(t, router, c.path)
+
+			e := router.m[c.path]
+			assertHandler(t, e.mh[c.method], dummyHandler)
+		})
+	}
 }
 
 func Test_RegisterFunc(t *testing.T) {
@@ -72,60 +100,140 @@ func Test_RegisterFunc(t *testing.T) {
 
 		router.registerFunc("/path", nil, MethodAll)
 	})
+
+	cases := []struct {
+		path   string
+		method string
+	}{
+		{"/users", MethodAll},
+		{"/users", MethodGet},
+		{"/users", MethodPost},
+		{"/users", MethodPut},
+		{"/users", MethodDelete},
+	}
+
+	router := &Router{}
+
+	for _, c := range cases {
+		t.Run(fmt.Sprintf(`add %q to %s`, c.path, c.method), func(t *testing.T) {
+
+			router.registerFunc(c.path, dummyHandlerFunc, c.method)
+
+			assertRegistered(t, router, c.path)
+
+			e := router.m[c.path]
+			assertHandlerFunc(t, e.mh[c.method], RouteHandlerFunc(dummyHandlerFunc))
+		})
+	}
+}
+
+type MockRouterHandler struct {
+	OnHandleFunc func(http.ResponseWriter, *http.Request)
+}
+
+func (h *MockRouterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.OnHandleFunc(w, r)
+}
+
+func newDummyURI(path string) string {
+	return "http://site.com" + path
+}
+
+type routeCase struct {
+	path    string
+	handler *MockRouterHandler
+	tests   []uriTest
+}
+
+type uriTest struct {
+	uri    string
+	method string
+	status int
+	body   string
 }
 
 func TestUse(t *testing.T) {
 
-	t.Run("add /user pattern", func(t *testing.T) {
-		router := &Router{}
+	cases := []routeCase{
+		{
+			path: "/users",
+			handler: &MockRouterHandler{
+				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprint(w, r.Method)
+				},
+			},
+			tests: []uriTest{
+				{newDummyURI("/users"), http.MethodGet, http.StatusOK, ""},
+			},
+		},
+	}
 
-		router.Use("/user", dummyHandler)
+	router := &Router{}
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("add %q pattern", c.path), func(t *testing.T) {
 
-		assertRegistered(t, router, "/user")
+			router.Use(c.path, c.handler)
 
-		e := router.m["/user"]
-		assertHandler(t, e.mh[MethodAll], dummyHandler)
-	})
-}
+			for _, tt := range c.tests {
+				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
+					request, _ := http.NewRequest(tt.method, tt.uri, nil)
+					response := httptest.NewRecorder()
 
-func TestUseFunc(t *testing.T) {
+					router.ServeHTTP(response, request)
 
-	t.Run("add /user pattern", func(t *testing.T) {
-		router := &Router{}
+					if response.Code != tt.status {
+						t.Errorf("got status %q, but want %q", response.Code, tt.status)
+					}
+				})
+			}
+		})
+	}
 
-		router.UseFunc("/user", dummyHandlerFunc)
-
-		assertRegistered(t, router, "/user")
-
-		e := router.m["/user"]
-		assertHandlerFunc(t, e.mh[MethodAll], RouteHandlerFunc(dummyHandlerFunc))
-	})
 }
 
 func TestGet(t *testing.T) {
-	t.Run("add /products pattern", func(t *testing.T) {
-		router := &Router{}
 
-		router.Get("/products", dummyHandler)
+	cases := []routeCase{
+		{
+			path: "/products",
+			handler: &MockRouterHandler{
+				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprint(w, `[{"Name": "Tea"}, {"Name": "Cup Noodle"}]`)
+				},
+			},
+			tests: []uriTest{
+				{newDummyURI("/products"), http.MethodGet, http.StatusOK, `[{"Name": "Tea"}, {"Name": "Cup Noodle"}]`},
+				{newDummyURI("/products"), http.MethodPost, http.StatusNotFound, ""},
+			},
+		},
+	}
 
-		assertRegistered(t, router, "/products")
+	router := &Router{}
 
-		e := router.m["/products"]
-		assertHandler(t, e.mh[MethodGet], dummyHandler)
-	})
-}
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("add path %q", c.path), func(t *testing.T) {
 
-func TestGetFunc(t *testing.T) {
-	t.Run("add /products pattern", func(t *testing.T) {
-		router := &Router{}
+			router.Get(c.path, c.handler)
 
-		router.GetFunc("/products", dummyHandlerFunc)
+			for _, tt := range c.tests {
+				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
+					request, _ := http.NewRequest(tt.method, tt.uri, nil)
+					response := httptest.NewRecorder()
 
-		assertRegistered(t, router, "/products")
+					router.ServeHTTP(response, request)
 
-		e := router.m["/products"]
-		assertHandlerFunc(t, e.mh[MethodGet], RouteHandlerFunc(dummyHandlerFunc))
-	})
+					if response.Code != tt.status {
+						t.Errorf("got status %q, but want %q", response.Code, tt.status)
+					}
+
+					body := response.Body.String()
+					if body != tt.body {
+						t.Errorf("got body %q, but want %q", body, tt.body)
+					}
+				})
+			}
+		})
+	}
 }
 
 func assertRegistered(t testing.TB, router *Router, path string) {
@@ -144,10 +252,11 @@ func assertHandler(t testing.TB, got, want RouteHandler) {
 	}
 }
 
-func assertHandlerFunc(t testing.TB, got, want RouteHandler) {
+func assertHandlerFunc(t testing.TB, got RouteHandler, want func(http.ResponseWriter, *http.Request)) {
 	t.Helper()
 
-	if !reflect.DeepEqual(reflect.ValueOf(got), reflect.ValueOf(want)) {
-		t.Errorf("got handler %#v, but want %#v", got, want)
+	w := RouteHandlerFunc(want)
+	if !reflect.DeepEqual(reflect.ValueOf(got), reflect.ValueOf(w)) {
+		t.Errorf("got handler %#v, but want %#v", got, w)
 	}
 }

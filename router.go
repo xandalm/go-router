@@ -39,13 +39,15 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e := ro.m[path]
 
 	h, ok := e.mh[r.Method]
-	if !ok {
-		if h, ok := e.mh["ALL"]; ok {
-			h.ServeHTTP(w, r)
-			return
-		}
+	if ok {
+		h.ServeHTTP(w, r)
+		return
 	}
-	h.ServeHTTP(w, r)
+	if h, ok := e.mh["ALL"]; ok {
+		h.ServeHTTP(w, r)
+		return
+	}
+	w.WriteHeader(http.StatusNotFound)
 }
 
 func (ro *Router) register(pattern string, handler RouteHandler, method string) {
