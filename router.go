@@ -2,6 +2,8 @@ package router
 
 import (
 	"net/http"
+	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -24,6 +26,7 @@ func (f RouteHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type routerEntry struct {
+	re *regexp.Regexp
 	mh map[string]RouteHandler
 }
 
@@ -44,11 +47,11 @@ func NewRouter() *Router {
 
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	_, h := ro.Handler(r)
+	_, h, _ := ro.Handler(r)
 	h.ServeHTTP(w, r)
 }
 
-func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler) {
+func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params map[string]string) {
 	ro.mu.RLock()
 	defer ro.mu.RUnlock()
 
@@ -66,7 +69,23 @@ func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler) {
 		p = path
 		return
 	}
-	return "", NotFoundHandler()
+	return "", NotFoundHandler(), nil
+}
+
+func createRegExp(pattern string) *regexp.Regexp {
+
+	builder := strings.Builder{}
+
+	builder.WriteRune('^')
+
+	paramsSeeker := regexp.MustCompile(`(\/\{[^\/]+\})`)
+	builder.WriteString(paramsSeeker.ReplaceAllStringFunc(pattern, func(m string) string {
+		return "/(?P<" + m[2:len(m)-1] + ">[^/]+)"
+	}))
+
+	builder.WriteString("$")
+
+	return regexp.MustCompile(strings.ReplaceAll(builder.String(), "/", `\/`))
 }
 
 func (ro *Router) register(pattern string, handler RouteHandler, method string) {
@@ -92,6 +111,7 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 		}
 	} else {
 		e = routerEntry{
+			re: createRegExp(pattern),
 			mh: make(map[string]RouteHandler),
 		}
 	}

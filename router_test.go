@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"regexp"
 	"testing"
 )
 
@@ -59,16 +60,20 @@ func Test_Register(t *testing.T) {
 		router.register("/path", dummyHandler, MethodAll)
 	})
 
+	userRE := regexp.MustCompile(`^\/users$`)
+
 	cases := []struct {
 		pattern string
+		re      *regexp.Regexp
 		method  string
 	}{
-		{"/users", MethodAll},
-		{"/api/users", MethodAll},
-		{"/users", MethodGet},
-		{"/users", MethodPost},
-		{"/users", MethodPut},
-		{"/users", MethodDelete},
+		{"/users", userRE, MethodAll},
+		{"/api/users", regexp.MustCompile(`^\/api\/users$`), MethodAll},
+		{"/users", userRE, MethodGet},
+		{"/users", userRE, MethodPost},
+		{"/users", userRE, MethodPut},
+		{"/users", userRE, MethodDelete},
+		{"/users/{id}", regexp.MustCompile(`^\/users\/(?P<id>[^\/]+)$`), MethodGet},
 	}
 
 	router := &Router{}
@@ -82,6 +87,10 @@ func Test_Register(t *testing.T) {
 
 			e := router.m[c.pattern]
 			assertHandler(t, e.mh[c.method], dummyHandler)
+
+			if !reflect.DeepEqual(c.re, e.re) {
+				t.Errorf("got regexp %q, but want %q", e.re, c.re)
+			}
 		})
 	}
 }
@@ -140,13 +149,41 @@ func TestHandler(t *testing.T) {
 
 		var pat string
 		var h RouteHandler
-		pat, h = router.Handler(request)
+		pat, h, _ = router.Handler(request)
 
 		if pat != pattern {
 			t.Errorf("got pattern %q, but want %q", pat, pattern)
 		}
 		assertHandler(t, dummyHandler, h)
 	})
+
+	// t.Run(`returns pattern, handler and id="1" in params`, func(t *testing.T) {
+	// 	router := NewRouter()
+
+	// 	pattern := "/users/{id}"
+	// 	path := "/users/1"
+
+	// 	router.Use(pattern, dummyHandler)
+
+	// 	request, _ := http.NewRequest(http.MethodGet, newDummyURI(path), nil)
+
+	// 	var pat string
+	// 	var h RouteHandler
+	// 	var params map[string]string
+	// 	pat, h, params = router.Handler(request)
+
+	// 	if pat != pattern {
+	// 		t.Errorf("got pattern %q, but want %q", pat, pattern)
+	// 	}
+	// 	assertHandler(t, dummyHandler, h)
+	// 	id, ok := params["id"]
+	// 	if !ok {
+	// 		t.Fatal("didn't get the param")
+	// 	}
+	// 	if id != "1" {
+	// 		t.Errorf("got id equal to %q, but want %q", id, "1")
+	// 	}
+	// })
 }
 
 type MockRouterHandler struct {
