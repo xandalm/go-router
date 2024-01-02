@@ -2,6 +2,7 @@ package router
 
 import (
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -42,9 +43,23 @@ func (h *notFoundHandler) ServeHTTP(w ResponseWriter, r *Request) {
 
 var NotFoundHandler = &notFoundHandler{}
 
+type redirectHandler struct {
+	url  string
+	code int
+}
+
+func (rh *redirectHandler) ServeHTTP(w ResponseWriter, r *Request) {
+	http.Redirect(w, r.Request, rh.url, rh.code)
+}
+
+func RedirectHandler(url string, code int) RouteHandler {
+	return &redirectHandler{url, code}
+}
+
 type Router struct {
 	mu   sync.RWMutex
 	m    map[string]routerEntry
+	sm   map[string]routerEntry
 	host bool
 }
 
@@ -63,6 +78,21 @@ func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params Par
 	host := r.URL.Host
 	path := r.URL.Path
 
+	p, h, params = ro.handler(host, path, r.Method)
+
+	if h != nil {
+		return
+	}
+
+	if ro.shouldRedirectToSlashPath(path) {
+		u := &url.URL{Path: path + "/", RawQuery: r.URL.RawQuery}
+		return u.Path, RedirectHandler(u.String(), http.StatusMovedPermanently), nil
+	}
+
+	return "", NotFoundHandler, nil
+}
+
+func (ro *Router) handler(host, path, method string) (p string, h RouteHandler, params Params) {
 	var e *routerEntry
 
 	if ro.host {
@@ -74,29 +104,46 @@ func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params Par
 	}
 
 	if e == nil {
-		return "", NotFoundHandler, nil
+		return "", nil, nil
 	}
 
-	h = e.mh[r.Method]
+	h = e.mh[method]
 
 	if h == nil {
 		h = e.mh[MethodAll]
-	}
-
-	if h != nil {
-		p = e.pattern
-		matches := e.re.FindStringSubmatch(path)
-		params = make(Params)
-
-		for i, tag := range e.re.SubexpNames() {
-			if i != 0 && tag != "" {
-				params[tag] = matches[i]
-			}
+		if h == nil {
+			return "", nil, nil
 		}
-		return
 	}
 
-	return "", NotFoundHandler, nil
+	matches := e.re.FindStringSubmatch(path)
+	params = make(Params)
+
+	for i, tag := range e.re.SubexpNames() {
+		if i != 0 && tag != "" {
+			params[tag] = matches[i]
+		}
+	}
+	return e.pattern, h, params
+}
+
+func (ro *Router) shouldRedirectToSlashPath(path string) bool {
+	ro.mu.RLock()
+	defer ro.mu.RUnlock()
+
+	path = path + "/"
+
+	if _, ok := ro.sm[path]; ok {
+		return true
+	}
+
+	for _, e := range ro.sm {
+		if e.re.MatchString(path) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (ro *Router) match(path string) *routerEntry {
@@ -166,6 +213,14 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 	e.mh[method] = handler
 
 	ro.m[pattern] = e
+
+	if pattern[len(pattern)-1] == '/' {
+		if ro.sm == nil {
+			ro.sm = make(map[string]routerEntry)
+		}
+
+		ro.sm[e.pattern] = e
+	}
 
 	ro.host = pattern[0] != '/'
 }

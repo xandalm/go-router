@@ -158,73 +158,73 @@ func TestHandler(t *testing.T) {
 	})
 
 	cases := []struct {
-		desc            string
-		pattern         string
-		uri             string
-		expectedPattern string
-		expectedHandler RouteHandler
-		expectedParams  Params
+		pattern             string
+		uri                 string
+		expectedPattern     string
+		expectedHandlerType reflect.Type
+		expectedParams      Params
 	}{
 		{
-			"returns pattern, handler and id equal to 1 in params",
 			"/users/{id}",
 			newDummyURI("/users/1"),
 			"/users/{id}",
-			dummyHandler,
+			reflect.TypeOf(dummyHandler),
 			Params{
 				"id": "1",
 			},
 		},
 		{
-			"returns pattern, handler and id equal to 6dbd2 in params",
 			"/users/{id}",
 			newDummyURI("/users/6dbd2"),
 			"/users/{id}",
-			dummyHandler,
+			reflect.TypeOf(dummyHandler),
 			Params{
 				"id": "6dbd2",
 			},
 		},
 		{
-			"returns pattern, handler and id equal to d033fdc6-dbd2-427c-b18c-a41aa6449d75 in params",
 			"/users/{id}",
 			newDummyURI("/users/d033fdc6-dbd2-427c-b18c-a41aa6449d75"),
 			"/users/{id}",
-			dummyHandler,
+			reflect.TypeOf(dummyHandler),
 			Params{
 				"id": "d033fdc6-dbd2-427c-b18c-a41aa6449d75",
 			},
 		},
 		{
-			"returns pattern, handler and id equal to {id} in params",
 			"/users/{id}",
 			newDummyURI("/users/{id}"),
 			"/users/{id}",
-			dummyHandler,
+			reflect.TypeOf(dummyHandler),
 			Params{
 				"id": "{id}",
 			},
 		},
 		{
-			"returns empty pattern, not found handler and nil params",
 			"/users/{id}",
 			newDummyURI("/users/"),
 			"",
-			NotFoundHandler,
+			reflect.TypeOf(NotFoundHandler),
 			nil,
 		},
 		{
-			"returns pattern, handler and empty params",
 			"site.com/users",
 			"http://site.com/users",
 			"site.com/users",
-			dummyHandler,
+			reflect.TypeOf(dummyHandler),
 			Params{},
+		},
+		{
+			"/users/",
+			newDummyURI("/users"),
+			"/users/",
+			reflect.TypeOf(&redirectHandler{}),
+			nil,
 		},
 	}
 
 	for _, c := range cases {
-		t.Run(c.desc, func(t *testing.T) {
+		t.Run(fmt.Sprintf("when listen to %q and request %q", c.pattern, c.uri), func(t *testing.T) {
 			router := NewRouter()
 
 			router.Use(c.pattern, dummyHandler)
@@ -239,7 +239,7 @@ func TestHandler(t *testing.T) {
 			if pat != c.expectedPattern {
 				t.Errorf("got pattern %q, but want %q", pat, c.expectedPattern)
 			}
-			assertHandler(t, h, c.expectedHandler)
+			assertHandlerType(t, c.expectedHandlerType, h)
 			if !reflect.DeepEqual(c.expectedParams, params) {
 				t.Errorf("got params %v, but want %v", params, c.expectedParams)
 			}
@@ -524,5 +524,14 @@ func assertBody(t testing.TB, response *httptest.ResponseRecorder, want string) 
 	got := response.Body.String()
 	if got != want {
 		t.Errorf("got body %q, but want %q", got, want)
+	}
+}
+
+func assertHandlerType(t testing.TB, want reflect.Type, got RouteHandler) {
+	t.Helper()
+
+	tp := reflect.TypeOf(got)
+	if tp != want {
+		t.Errorf("got handler type %v, but want %v", tp, want)
 	}
 }
