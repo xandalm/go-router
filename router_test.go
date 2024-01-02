@@ -19,7 +19,7 @@ var dummyHandler = &dummyRouteHandler{}
 var dummyHandlerFunc = func(w ResponseWriter, r *Request) {
 }
 
-func Test_Register(t *testing.T) {
+func Test_register(t *testing.T) {
 
 	t.Run("panic on empty pattern", func(t *testing.T) {
 		router := &Router{}
@@ -95,7 +95,7 @@ func Test_Register(t *testing.T) {
 	}
 }
 
-func Test_RegisterFunc(t *testing.T) {
+func Test_registerFunc(t *testing.T) {
 
 	t.Run("panic on nil handler", func(t *testing.T) {
 		router := &Router{}
@@ -160,58 +160,66 @@ func TestHandler(t *testing.T) {
 	cases := []struct {
 		desc            string
 		pattern         string
-		path            string
+		uri             string
 		expectedPattern string
 		expectedHandler RouteHandler
-		expectedParams  map[string]string
+		expectedParams  Params
 	}{
 		{
 			"returns pattern, handler and id equal to 1 in params",
 			"/users/{id}",
-			"/users/1",
+			newDummyURI("/users/1"),
 			"/users/{id}",
 			dummyHandler,
-			map[string]string{
+			Params{
 				"id": "1",
 			},
 		},
 		{
 			"returns pattern, handler and id equal to 6dbd2 in params",
 			"/users/{id}",
-			"/users/6dbd2",
+			newDummyURI("/users/6dbd2"),
 			"/users/{id}",
 			dummyHandler,
-			map[string]string{
+			Params{
 				"id": "6dbd2",
 			},
 		},
 		{
 			"returns pattern, handler and id equal to d033fdc6-dbd2-427c-b18c-a41aa6449d75 in params",
 			"/users/{id}",
-			"/users/d033fdc6-dbd2-427c-b18c-a41aa6449d75",
+			newDummyURI("/users/d033fdc6-dbd2-427c-b18c-a41aa6449d75"),
 			"/users/{id}",
 			dummyHandler,
-			map[string]string{
+			Params{
 				"id": "d033fdc6-dbd2-427c-b18c-a41aa6449d75",
 			},
 		},
 		{
 			"returns pattern, handler and id equal to {id} in params",
 			"/users/{id}",
-			"/users/{id}",
+			newDummyURI("/users/{id}"),
 			"/users/{id}",
 			dummyHandler,
-			map[string]string{
+			Params{
 				"id": "{id}",
 			},
 		},
 		{
 			"returns empty pattern, not found handler and nil params",
 			"/users/{id}",
-			"/users/",
+			newDummyURI("/users/"),
 			"",
 			NotFoundHandler,
 			nil,
+		},
+		{
+			"returns pattern, handler and empty params",
+			"site.com/users",
+			"http://site.com/users",
+			"site.com/users",
+			dummyHandler,
+			Params{},
 		},
 	}
 
@@ -221,11 +229,11 @@ func TestHandler(t *testing.T) {
 
 			router.Use(c.pattern, dummyHandler)
 
-			request, _ := http.NewRequest(http.MethodGet, newDummyURI(c.path), nil)
+			request, _ := http.NewRequest(http.MethodGet, c.uri, nil)
 
 			var pat string
 			var h RouteHandler
-			var params map[string]string
+			var params Params
 			pat, h, params = router.Handler(request)
 
 			if pat != c.expectedPattern {

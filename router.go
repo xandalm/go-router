@@ -43,8 +43,9 @@ func (h *notFoundHandler) ServeHTTP(w ResponseWriter, r *Request) {
 var NotFoundHandler = &notFoundHandler{}
 
 type Router struct {
-	mu sync.RWMutex
-	m  map[string]routerEntry
+	mu   sync.RWMutex
+	m    map[string]routerEntry
+	host bool
 }
 
 func NewRouter() *Router {
@@ -57,11 +58,20 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.ServeHTTP(w, &Request{params: params, Request: r})
 }
 
-func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params map[string]string) {
+func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params Params) {
 
+	host := r.URL.Host
 	path := r.URL.Path
 
-	e := ro.match(path)
+	var e *routerEntry
+
+	if ro.host {
+		e = ro.match(host + path)
+	}
+
+	if e == nil {
+		e = ro.match(path)
+	}
 
 	if e == nil {
 		return "", NotFoundHandler, nil
@@ -76,7 +86,7 @@ func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params map
 	if h != nil {
 		p = e.pattern
 		matches := e.re.FindStringSubmatch(path)
-		params = make(map[string]string)
+		params = make(Params)
 
 		for i, tag := range e.re.SubexpNames() {
 			if i != 0 && tag != "" {
@@ -156,6 +166,8 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 	e.mh[method] = handler
 
 	ro.m[pattern] = e
+
+	ro.host = pattern[0] != '/'
 }
 
 func (ro *Router) registerFunc(pattern string, handler func(w ResponseWriter, r *Request), method string) {
