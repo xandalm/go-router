@@ -26,8 +26,9 @@ func (f RouteHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type routerEntry struct {
-	re *regexp.Regexp
-	mh map[string]RouteHandler
+	pattern string
+	re      *regexp.Regexp
+	mh      map[string]RouteHandler
 }
 
 func NotFoundHandler() RouteHandler {
@@ -52,24 +53,54 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params map[string]string) {
-	ro.mu.RLock()
-	defer ro.mu.RUnlock()
 
 	path := r.URL.Path
 
-	e := ro.m[path]
+	e := ro.match(path)
 
-	h, ok := e.mh[r.Method]
-	if ok {
-		p = path
-		return
+	if e == nil {
+		return "", NotFoundHandler(), nil
 	}
-	if _, ok := e.mh[MethodAll]; ok {
+
+	h = e.mh[r.Method]
+
+	if h == nil {
 		h = e.mh[MethodAll]
-		p = path
+	}
+
+	if h != nil {
+		p = e.pattern
+		matches := e.re.FindStringSubmatch(path)
+		params = make(map[string]string)
+
+		for i, tag := range e.re.SubexpNames() {
+			if i != 0 && tag != "" {
+				params[tag] = matches[i]
+			}
+		}
 		return
 	}
+
 	return "", NotFoundHandler(), nil
+}
+
+func (ro *Router) match(path string) *routerEntry {
+	ro.mu.RLock()
+	defer ro.mu.RUnlock()
+
+	// Check exactly match
+	e, ok := ro.m[path]
+	if ok && e.re.MatchString(path) {
+		return &e
+	}
+
+	for _, e := range ro.m {
+		if e.re.MatchString(path) {
+			return &e
+		}
+	}
+
+	return nil
 }
 
 func createRegExp(pattern string) *regexp.Regexp {
@@ -111,8 +142,9 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 		}
 	} else {
 		e = routerEntry{
-			re: createRegExp(pattern),
-			mh: make(map[string]RouteHandler),
+			pattern: pattern,
+			re:      createRegExp(pattern),
+			mh:      make(map[string]RouteHandler),
 		}
 	}
 
