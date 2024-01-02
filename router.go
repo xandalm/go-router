@@ -53,8 +53,8 @@ func NewRouter() *Router {
 
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	_, h, _ := ro.Handler(r)
-	h.ServeHTTP(w, &Request{Request: r})
+	_, h, params := ro.Handler(r)
+	h.ServeHTTP(w, &Request{params: params, Request: r})
 }
 
 func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params map[string]string) {

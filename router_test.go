@@ -240,10 +240,12 @@ func TestHandler(t *testing.T) {
 }
 
 type MockRouterHandler struct {
+	lastParams   Params
 	OnHandleFunc func(ResponseWriter, *Request)
 }
 
 func (h *MockRouterHandler) ServeHTTP(w ResponseWriter, r *Request) {
+	h.lastParams = r.Params()
 	h.OnHandleFunc(w, r)
 }
 
@@ -260,6 +262,7 @@ type routeCase struct {
 type uriTest struct {
 	uri    string
 	method string
+	params Params
 	status int
 	body   string
 }
@@ -271,11 +274,20 @@ func TestUse(t *testing.T) {
 			path: "/users",
 			handler: &MockRouterHandler{
 				OnHandleFunc: func(w ResponseWriter, r *Request) {
-					fmt.Fprint(w, r.Method)
 				},
 			},
 			tests: []uriTest{
-				{newDummyURI("/users"), http.MethodGet, http.StatusOK, ""},
+				{newDummyURI("/users"), http.MethodGet, Params{}, http.StatusOK, ""},
+			},
+		},
+		{
+			path: "/users/{id}",
+			handler: &MockRouterHandler{
+				OnHandleFunc: func(w ResponseWriter, r *Request) {
+				},
+			},
+			tests: []uriTest{
+				{newDummyURI("/users/13"), http.MethodGet, Params{"id": "13"}, http.StatusOK, ""},
 			},
 		},
 	}
@@ -293,9 +305,13 @@ func TestUse(t *testing.T) {
 
 					router.ServeHTTP(response, request)
 
-					if response.Code != tt.status {
-						t.Errorf("got status %q, but want %q", response.Code, tt.status)
+					assertStatus(t, response, tt.status)
+
+					if !reflect.DeepEqual(c.handler.lastParams, tt.params) {
+						t.Errorf("got params %#v, but want %#v", c.handler.lastParams, tt.params)
 					}
+
+					assertBody(t, response, tt.body)
 				})
 			}
 		})
@@ -314,10 +330,10 @@ func TestGet(t *testing.T) {
 				},
 			},
 			tests: []uriTest{
-				{newDummyURI("/products"), http.MethodGet, http.StatusOK, `[{"Name": "Tea"}, {"Name": "Cup Noodle"}]`},
-				{newDummyURI("/products"), http.MethodPost, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPut, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodDelete, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodGet, Params{}, http.StatusOK, `[{"Name": "Tea"}, {"Name": "Cup Noodle"}]`},
+				{newDummyURI("/products"), http.MethodPost, Params{}, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPut, Params{}, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodDelete, Params{}, http.StatusNotFound, ""},
 			},
 		},
 	}
@@ -335,14 +351,9 @@ func TestGet(t *testing.T) {
 
 					router.ServeHTTP(response, request)
 
-					if response.Code != tt.status {
-						t.Errorf("got status %q, but want %q", response.Code, tt.status)
-					}
+					assertStatus(t, response, tt.status)
 
-					body := response.Body.String()
-					if body != tt.body {
-						t.Errorf("got body %q, but want %q", body, tt.body)
-					}
+					assertBody(t, response, tt.body)
 				})
 			}
 		})
@@ -358,10 +369,10 @@ func TestPost(t *testing.T) {
 				OnHandleFunc: func(w ResponseWriter, r *Request) {},
 			},
 			tests: []uriTest{
-				{newDummyURI("/products"), http.MethodPost, http.StatusOK, ""},
-				{newDummyURI("/products"), http.MethodGet, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPut, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodDelete, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPost, Params{}, http.StatusOK, ""},
+				{newDummyURI("/products"), http.MethodGet, Params{}, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPut, Params{}, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodDelete, Params{}, http.StatusNotFound, ""},
 			},
 		},
 	}
@@ -379,14 +390,9 @@ func TestPost(t *testing.T) {
 
 					router.ServeHTTP(response, request)
 
-					if response.Code != tt.status {
-						t.Errorf("got status %q, but want %q", response.Code, tt.status)
-					}
+					assertStatus(t, response, tt.status)
 
-					body := response.Body.String()
-					if body != tt.body {
-						t.Errorf("got body %q, but want %q", body, tt.body)
-					}
+					assertBody(t, response, tt.body)
 				})
 			}
 		})
@@ -402,10 +408,10 @@ func TestPut(t *testing.T) {
 				OnHandleFunc: func(w ResponseWriter, r *Request) {},
 			},
 			tests: []uriTest{
-				{newDummyURI("/products"), http.MethodPut, http.StatusOK, ""},
-				{newDummyURI("/products"), http.MethodGet, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPost, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodDelete, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPut, Params{}, http.StatusOK, ""},
+				{newDummyURI("/products"), http.MethodGet, Params{}, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPost, Params{}, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodDelete, Params{}, http.StatusNotFound, ""},
 			},
 		},
 	}
@@ -423,14 +429,9 @@ func TestPut(t *testing.T) {
 
 					router.ServeHTTP(response, request)
 
-					if response.Code != tt.status {
-						t.Errorf("got status %q, but want %q", response.Code, tt.status)
-					}
+					assertStatus(t, response, tt.status)
 
-					body := response.Body.String()
-					if body != tt.body {
-						t.Errorf("got body %q, but want %q", body, tt.body)
-					}
+					assertBody(t, response, tt.body)
 				})
 			}
 		})
@@ -446,10 +447,10 @@ func TestDelete(t *testing.T) {
 				OnHandleFunc: func(w ResponseWriter, r *Request) {},
 			},
 			tests: []uriTest{
-				{newDummyURI("/products"), http.MethodDelete, http.StatusOK, ""},
-				{newDummyURI("/products"), http.MethodGet, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPut, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPost, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodDelete, Params{}, http.StatusOK, ""},
+				{newDummyURI("/products"), http.MethodGet, Params{}, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPut, Params{}, http.StatusNotFound, ""},
+				{newDummyURI("/products"), http.MethodPost, Params{}, http.StatusNotFound, ""},
 			},
 		},
 	}
@@ -467,14 +468,9 @@ func TestDelete(t *testing.T) {
 
 					router.ServeHTTP(response, request)
 
-					if response.Code != tt.status {
-						t.Errorf("got status %q, but want %q", response.Code, tt.status)
-					}
+					assertStatus(t, response, tt.status)
 
-					body := response.Body.String()
-					if body != tt.body {
-						t.Errorf("got body %q, but want %q", body, tt.body)
-					}
+					assertBody(t, response, tt.body)
 				})
 			}
 		})
@@ -503,5 +499,22 @@ func assertHandlerFunc(t testing.TB, got RouteHandler, want func(ResponseWriter,
 	w := RouteHandlerFunc(want)
 	if !reflect.DeepEqual(reflect.ValueOf(got), reflect.ValueOf(w)) {
 		t.Errorf("got handler %#v, but want %#v", got, w)
+	}
+}
+
+func assertStatus(t testing.TB, response *httptest.ResponseRecorder, status int) {
+	t.Helper()
+
+	if response.Code != status {
+		t.Errorf("got status %q, but want %q", response.Code, status)
+	}
+}
+
+func assertBody(t testing.TB, response *httptest.ResponseRecorder, want string) {
+	t.Helper()
+
+	got := response.Body.String()
+	if got != want {
+		t.Errorf("got body %q, but want %q", got, want)
 	}
 }

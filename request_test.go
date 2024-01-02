@@ -10,7 +10,7 @@ func TestRequest(t *testing.T) {
 
 	t.Run("returns params", func(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, newDummyURI("/path/something"), nil)
-		params := map[string]string{
+		params := Params{
 			"param": "something",
 		}
 
@@ -30,7 +30,7 @@ func TestRequest(t *testing.T) {
 
 	t.Run("returns empty params", func(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, newDummyURI("/path"), nil)
-		params := map[string]string{}
+		params := Params{}
 
 		request := &Request{
 			Request: req,

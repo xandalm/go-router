@@ -2,14 +2,16 @@ package router
 
 import "net/http"
 
+type Params map[string]string
+
 type Request struct {
-	params map[string]string
+	params Params
 	*http.Request
 }
 
-func (r *Request) Params() map[string]string {
+func (r *Request) Params() Params {
 	if r.params == nil {
-		r.params = make(map[string]string)
+		r.params = make(Params)
 	}
 	return r.params
 }
