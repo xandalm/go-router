@@ -31,11 +31,14 @@ type routerEntry struct {
 	mh      map[string]RouteHandler
 }
 
-func NotFoundHandler() RouteHandler {
-	return RouteHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	})
+type notFoundHandler struct {
 }
+
+func (h *notFoundHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
+}
+
+var NotFoundHandler = &notFoundHandler{}
 
 type Router struct {
 	mu sync.RWMutex
@@ -59,7 +62,7 @@ func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params map
 	e := ro.match(path)
 
 	if e == nil {
-		return "", NotFoundHandler(), nil
+		return "", NotFoundHandler, nil
 	}
 
 	h = e.mh[r.Method]
@@ -81,7 +84,7 @@ func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params map
 		return
 	}
 
-	return "", NotFoundHandler(), nil
+	return "", NotFoundHandler, nil
 }
 
 func (ro *Router) match(path string) *routerEntry {

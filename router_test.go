@@ -157,33 +157,86 @@ func TestHandler(t *testing.T) {
 		assertHandler(t, dummyHandler, h)
 	})
 
-	t.Run(`returns pattern, handler and id="1" in params`, func(t *testing.T) {
-		router := NewRouter()
+	cases := []struct {
+		desc            string
+		pattern         string
+		path            string
+		expectedPattern string
+		expectedHandler RouteHandler
+		expectedParams  map[string]string
+	}{
+		{
+			"returns pattern, handler and id equal to 1 in params",
+			"/users/{id}",
+			"/users/1",
+			"/users/{id}",
+			dummyHandler,
+			map[string]string{
+				"id": "1",
+			},
+		},
+		{
+			"returns pattern, handler and id equal to 6dbd2 in params",
+			"/users/{id}",
+			"/users/6dbd2",
+			"/users/{id}",
+			dummyHandler,
+			map[string]string{
+				"id": "6dbd2",
+			},
+		},
+		{
+			"returns pattern, handler and id equal to d033fdc6-dbd2-427c-b18c-a41aa6449d75 in params",
+			"/users/{id}",
+			"/users/d033fdc6-dbd2-427c-b18c-a41aa6449d75",
+			"/users/{id}",
+			dummyHandler,
+			map[string]string{
+				"id": "d033fdc6-dbd2-427c-b18c-a41aa6449d75",
+			},
+		},
+		{
+			"returns pattern, handler and id equal to {id} in params",
+			"/users/{id}",
+			"/users/{id}",
+			"/users/{id}",
+			dummyHandler,
+			map[string]string{
+				"id": "{id}",
+			},
+		},
+		{
+			"returns empty pattern, not found handler and nil params",
+			"/users/{id}",
+			"/users/",
+			"",
+			NotFoundHandler,
+			nil,
+		},
+	}
 
-		pattern := "/users/{id}"
-		path := "/users/1"
+	for _, c := range cases {
+		t.Run(c.desc, func(t *testing.T) {
+			router := NewRouter()
 
-		router.Use(pattern, dummyHandler)
+			router.Use(c.pattern, dummyHandler)
 
-		request, _ := http.NewRequest(http.MethodGet, newDummyURI(path), nil)
+			request, _ := http.NewRequest(http.MethodGet, newDummyURI(c.path), nil)
 
-		var pat string
-		var h RouteHandler
-		var params map[string]string
-		pat, h, params = router.Handler(request)
+			var pat string
+			var h RouteHandler
+			var params map[string]string
+			pat, h, params = router.Handler(request)
 
-		if pat != pattern {
-			t.Errorf("got pattern %q, but want %q", pat, pattern)
-		}
-		assertHandler(t, dummyHandler, h)
-		id, ok := params["id"]
-		if !ok {
-			t.Fatal("didn't get the param")
-		}
-		if id != "1" {
-			t.Errorf("got id equal to %q, but want %q", id, "1")
-		}
-	})
+			if pat != c.expectedPattern {
+				t.Errorf("got pattern %q, but want %q", pat, c.expectedPattern)
+			}
+			assertHandler(t, h, c.expectedHandler)
+			if !reflect.DeepEqual(c.expectedParams, params) {
+				t.Errorf("got params %v, but want %v", params, c.expectedParams)
+			}
+		})
+	}
 }
 
 type MockRouterHandler struct {
