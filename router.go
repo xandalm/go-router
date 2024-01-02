@@ -15,13 +15,15 @@ const (
 	MethodDelete = http.MethodDelete
 )
 
+type ResponseWriter http.ResponseWriter
+
 type RouteHandler interface {
-	ServeHTTP(http.ResponseWriter, *http.Request)
+	ServeHTTP(ResponseWriter, *Request)
 }
 
-type RouteHandlerFunc func(http.ResponseWriter, *http.Request)
+type RouteHandlerFunc func(ResponseWriter, *Request)
 
-func (f RouteHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (f RouteHandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 	f(w, r)
 }
 
@@ -34,7 +36,7 @@ type routerEntry struct {
 type notFoundHandler struct {
 }
 
-func (h *notFoundHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *notFoundHandler) ServeHTTP(w ResponseWriter, r *Request) {
 	w.WriteHeader(http.StatusNotFound)
 }
 
@@ -52,7 +54,7 @@ func NewRouter() *Router {
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	_, h, _ := ro.Handler(r)
-	h.ServeHTTP(w, r)
+	h.ServeHTTP(w, &Request{Request: r})
 }
 
 func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params map[string]string) {
@@ -156,7 +158,7 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 	ro.m[pattern] = e
 }
 
-func (ro *Router) registerFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request), method string) {
+func (ro *Router) registerFunc(pattern string, handler func(w ResponseWriter, r *Request), method string) {
 	if handler == nil {
 		panic("router: nil handler")
 	}
@@ -171,7 +173,7 @@ func (ro *Router) Use(pattern string, handler RouteHandler) {
 
 // Similar to Use method, but this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
-func (ro *Router) UseFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
+func (ro *Router) UseFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, RouteHandlerFunc(handler), MethodAll)
 }
 
@@ -182,7 +184,7 @@ func (ro *Router) Get(pattern string, handler RouteHandler) {
 
 // Similar to Get method, but this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
-func (ro *Router) GetFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
+func (ro *Router) GetFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodGet)
 }
 
@@ -193,7 +195,7 @@ func (ro *Router) Post(pattern string, handler RouteHandler) {
 
 // Similar to Post method, but this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
-func (ro *Router) PostFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
+func (ro *Router) PostFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodPost)
 }
 
@@ -204,7 +206,7 @@ func (ro *Router) Put(pattern string, handler RouteHandler) {
 
 // Similar to Put method, but this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
-func (ro *Router) PutFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
+func (ro *Router) PutFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodPut)
 }
 
@@ -215,6 +217,6 @@ func (ro *Router) Delete(pattern string, handler RouteHandler) {
 
 // Similar to Delete method, but this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
-func (ro *Router) DeleteFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) {
+func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodDelete)
 }

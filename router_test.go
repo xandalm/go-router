@@ -11,12 +11,12 @@ import (
 
 type dummyRouteHandler struct{}
 
-func (h *dummyRouteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *dummyRouteHandler) ServeHTTP(w ResponseWriter, r *Request) {
 
 }
 
 var dummyHandler = &dummyRouteHandler{}
-var dummyHandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+var dummyHandlerFunc = func(w ResponseWriter, r *Request) {
 }
 
 func Test_Register(t *testing.T) {
@@ -240,10 +240,10 @@ func TestHandler(t *testing.T) {
 }
 
 type MockRouterHandler struct {
-	OnHandleFunc func(http.ResponseWriter, *http.Request)
+	OnHandleFunc func(ResponseWriter, *Request)
 }
 
-func (h *MockRouterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *MockRouterHandler) ServeHTTP(w ResponseWriter, r *Request) {
 	h.OnHandleFunc(w, r)
 }
 
@@ -270,7 +270,7 @@ func TestUse(t *testing.T) {
 		{
 			path: "/users",
 			handler: &MockRouterHandler{
-				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {
+				OnHandleFunc: func(w ResponseWriter, r *Request) {
 					fmt.Fprint(w, r.Method)
 				},
 			},
@@ -309,7 +309,7 @@ func TestGet(t *testing.T) {
 		{
 			path: "/products",
 			handler: &MockRouterHandler{
-				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {
+				OnHandleFunc: func(w ResponseWriter, r *Request) {
 					fmt.Fprint(w, `[{"Name": "Tea"}, {"Name": "Cup Noodle"}]`)
 				},
 			},
@@ -355,7 +355,7 @@ func TestPost(t *testing.T) {
 		{
 			path: "/products",
 			handler: &MockRouterHandler{
-				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {},
+				OnHandleFunc: func(w ResponseWriter, r *Request) {},
 			},
 			tests: []uriTest{
 				{newDummyURI("/products"), http.MethodPost, http.StatusOK, ""},
@@ -399,7 +399,7 @@ func TestPut(t *testing.T) {
 		{
 			path: "/products",
 			handler: &MockRouterHandler{
-				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {},
+				OnHandleFunc: func(w ResponseWriter, r *Request) {},
 			},
 			tests: []uriTest{
 				{newDummyURI("/products"), http.MethodPut, http.StatusOK, ""},
@@ -443,7 +443,7 @@ func TestDelete(t *testing.T) {
 		{
 			path: "/products",
 			handler: &MockRouterHandler{
-				OnHandleFunc: func(w http.ResponseWriter, r *http.Request) {},
+				OnHandleFunc: func(w ResponseWriter, r *Request) {},
 			},
 			tests: []uriTest{
 				{newDummyURI("/products"), http.MethodDelete, http.StatusOK, ""},
@@ -497,7 +497,7 @@ func assertHandler(t testing.TB, got, want RouteHandler) {
 	}
 }
 
-func assertHandlerFunc(t testing.TB, got RouteHandler, want func(http.ResponseWriter, *http.Request)) {
+func assertHandlerFunc(t testing.TB, got RouteHandler, want func(ResponseWriter, *Request)) {
 	t.Helper()
 
 	w := RouteHandlerFunc(want)
