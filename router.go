@@ -74,8 +74,9 @@ func cleanPath(p string) string {
 
 type Router struct {
 	mu   sync.RWMutex
-	m    map[string]routerEntry
-	sm   map[string]routerEntry
+	m    map[string]*routerEntry
+	sm   map[string]*routerEntry
+	um   map[string]*routerEntry
 	host bool
 }
 
@@ -106,8 +107,13 @@ func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params Par
 		return
 	}
 
-	if ro.shouldRedirectToSlashPath(path) {
-		u := &url.URL{Path: path + "/", RawQuery: r.URL.RawQuery}
+	if newPath, ok := ro.shouldRedirectToSlashPath(path); ok {
+		u := &url.URL{Path: newPath, RawQuery: r.URL.RawQuery}
+		return u.Path, RedirectHandler(u.String(), http.StatusMovedPermanently), nil
+	}
+
+	if newPath, ok := ro.shouldRedirectToUnslashPath(path); ok {
+		u := &url.URL{Path: newPath, RawQuery: r.URL.RawQuery}
 		return u.Path, RedirectHandler(u.String(), http.StatusMovedPermanently), nil
 	}
 
@@ -149,23 +155,52 @@ func (ro *Router) handler(host, path, method string) (p string, h RouteHandler, 
 	return e.pattern, h, params
 }
 
-func (ro *Router) shouldRedirectToSlashPath(path string) bool {
+func (ro *Router) shouldRedirectToUnslashPath(path string) (string, bool) {
 	ro.mu.RLock()
 	defer ro.mu.RUnlock()
+
+	l := len(path)
+	if path[l-1] != '/' {
+		return "", false
+	}
+
+	path = path[:l-1]
+
+	if _, ok := ro.um[path]; ok {
+		return path, true
+	}
+
+	for _, e := range ro.um {
+		if e.re.MatchString(path) {
+			return path, true
+		}
+	}
+
+	return "", false
+
+}
+
+func (ro *Router) shouldRedirectToSlashPath(path string) (string, bool) {
+	ro.mu.RLock()
+	defer ro.mu.RUnlock()
+
+	if path[len(path)-1] == '/' {
+		return "", false
+	}
 
 	path = path + "/"
 
 	if _, ok := ro.sm[path]; ok {
-		return true
+		return path, true
 	}
 
 	for _, e := range ro.sm {
 		if e.re.MatchString(path) {
-			return true
+			return path, true
 		}
 	}
 
-	return false
+	return "", false
 }
 
 func (ro *Router) match(path string) *routerEntry {
@@ -175,12 +210,12 @@ func (ro *Router) match(path string) *routerEntry {
 	// Check exactly match
 	e, ok := ro.m[path]
 	if ok && e.re.MatchString(path) {
-		return &e
+		return e
 	}
 
 	for _, e := range ro.m {
 		if e.re.MatchString(path) {
-			return &e
+			return e
 		}
 	}
 
@@ -216,7 +251,7 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 	}
 
 	if ro.m == nil {
-		ro.m = make(map[string]routerEntry)
+		ro.m = make(map[string]*routerEntry)
 	}
 
 	e, ok := ro.m[pattern]
@@ -225,7 +260,7 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 			panic("router: multiple registration into " + pattern)
 		}
 	} else {
-		e = routerEntry{
+		e = &routerEntry{
 			pattern: pattern,
 			re:      createRegExp(pattern),
 			mh:      make(map[string]RouteHandler),
@@ -238,10 +273,14 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 
 	if pattern[len(pattern)-1] == '/' {
 		if ro.sm == nil {
-			ro.sm = make(map[string]routerEntry)
+			ro.sm = make(map[string]*routerEntry)
 		}
-
 		ro.sm[e.pattern] = e
+	} else {
+		if ro.um == nil {
+			ro.um = make(map[string]*routerEntry)
+		}
+		ro.um[e.pattern] = e
 	}
 
 	ro.host = pattern[0] != '/'

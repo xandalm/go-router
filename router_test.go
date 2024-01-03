@@ -13,7 +13,6 @@ import (
 type dummyRouteHandler struct{}
 
 func (h *dummyRouteHandler) ServeHTTP(w ResponseWriter, r *Request) {
-
 }
 
 var dummyHandler = &dummyRouteHandler{}
@@ -112,8 +111,8 @@ func Test_registerFunc(t *testing.T) {
 	})
 
 	cases := []struct {
-		path   string
-		method string
+		pattern string
+		method  string
 	}{
 		{"/users", MethodAll},
 		{"/users", MethodGet},
@@ -125,14 +124,13 @@ func Test_registerFunc(t *testing.T) {
 	router := &Router{}
 
 	for _, c := range cases {
-		t.Run(fmt.Sprintf(`add %q to %s`, c.path, c.method), func(t *testing.T) {
+		t.Run(fmt.Sprintf(`add %q to %s`, c.pattern, c.method), func(t *testing.T) {
 
-			router.registerFunc(c.path, dummyHandlerFunc, c.method)
+			router.registerFunc(c.pattern, dummyHandlerFunc, c.method)
 
-			assertRegistered(t, router, c.path)
+			assertRegistered(t, router, c.pattern)
 
-			e := router.m[c.path]
-			assertHandlerFunc(t, e.mh[c.method], RouteHandlerFunc(dummyHandlerFunc))
+			checkHandlerFunc(t, router, c.pattern, c.method, dummyHandlerFunc)
 		})
 	}
 }
@@ -211,6 +209,13 @@ func TestHandler(t *testing.T) {
 			nil,
 		},
 		{
+			"/users",
+			newDummyURI("/users/"),
+			"/users",
+			reflect.TypeOf(&redirectHandler{}),
+			nil,
+		},
+		{
 			"/api/v1/partners",
 			newDummyURI("/api/v1/products/../partners"),
 			"/api/v1/partners",
@@ -240,6 +245,59 @@ func TestHandler(t *testing.T) {
 		})
 	}
 
+	t.Run(`distinguish "/users" from "/users/" when both were added`, func(t *testing.T) {
+		router := NewRouter()
+
+		handlerOne := &MockRouterHandler{
+			OnHandleFunc: func(w ResponseWriter, r *Request) {
+			},
+		}
+		handlerTwo := &MockRouterHandler{
+			OnHandleFunc: func(w ResponseWriter, r *Request) {
+			},
+		}
+
+		router.Use("/users/", handlerOne)
+		router.Use("/users", handlerTwo)
+
+		cases := []struct {
+			path    string
+			pattern string
+			handler *MockRouterHandler
+			params  Params
+		}{
+			{
+				path:    "/users/",
+				pattern: "/users/",
+				handler: handlerOne,
+				params:  Params{},
+			},
+			{
+				path:    "/users",
+				pattern: "/users",
+				handler: handlerTwo,
+				params:  Params{},
+			},
+		}
+
+		for _, c := range cases {
+			request, _ := http.NewRequest(http.MethodGet, newDummyURI(c.path), nil)
+
+			var pat string
+			var h RouteHandler
+			var params Params
+
+			pat, h, params = router.Handler(request)
+
+			if pat != c.pattern {
+				t.Errorf("got pattern %q, but want %q", pat, c.pattern)
+			}
+
+			assertHandler(t, h, c.handler)
+
+			assertParams(t, params, c.params)
+		}
+	})
 }
 
 type MockRouterHandler struct {
@@ -432,15 +490,16 @@ func TestDelete(t *testing.T) {
 func TestRouter(t *testing.T) {
 
 	router := NewRouter()
-	t.Run(`handle to GET "/api/users" after add "/api/users" on GET`, func(t *testing.T) {
+
+	t.Run(`handle to GET "/admin/users" after add "/admin/users" on GET`, func(t *testing.T) {
 		handler := &MockRouterHandler{
 			OnHandleFunc: func(w ResponseWriter, r *Request) {
 				fmt.Fprint(w, `[]`)
 			},
 		}
-		router.Get("/api/users", handler)
+		router.Get("/admin/users", handler)
 
-		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/api/users"), nil)
+		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/admin/users"), nil)
 		response := httptest.NewRecorder()
 
 		router.ServeHTTP(response, request)
@@ -467,12 +526,19 @@ func assertHandler(t testing.TB, got, want RouteHandler) {
 	}
 }
 
-func assertHandlerFunc(t testing.TB, got RouteHandler, want func(ResponseWriter, *Request)) {
+func checkHandlerFunc(t *testing.T, router *Router, pattern, method string, handler func(ResponseWriter, *Request)) {
 	t.Helper()
 
-	w := RouteHandlerFunc(want)
-	if !reflect.DeepEqual(reflect.ValueOf(got), reflect.ValueOf(w)) {
-		t.Errorf("got handler %#v, but want %#v", got, w)
+	e := router.m[pattern]
+	got := e.mh[method].(RouteHandlerFunc)
+	assertHandlerFunc(t, got, RouteHandlerFunc(dummyHandlerFunc))
+}
+
+func assertHandlerFunc(t testing.TB, got RouteHandlerFunc, want RouteHandlerFunc) {
+	t.Helper()
+
+	if !reflect.DeepEqual(reflect.ValueOf(got), reflect.ValueOf(want)) {
+		t.Errorf("got handler %#v, but want %#v", got, want)
 	}
 }
 
