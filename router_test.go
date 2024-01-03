@@ -221,6 +221,13 @@ func TestHandler(t *testing.T) {
 			reflect.TypeOf(&redirectHandler{}),
 			nil,
 		},
+		{
+			"/api/v1/partners",
+			newDummyURI("/api/v1/products/../partners"),
+			"/api/v1/partners",
+			reflect.TypeOf(&redirectHandler{}),
+			nil,
+		},
 	}
 
 	for _, c := range cases {

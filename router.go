@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -34,14 +35,9 @@ type routerEntry struct {
 	mh      map[string]RouteHandler
 }
 
-type notFoundHandler struct {
-}
-
-func (h *notFoundHandler) ServeHTTP(w ResponseWriter, r *Request) {
+var NotFoundHandler = RouteHandlerFunc(func(w ResponseWriter, r *Request) {
 	w.WriteHeader(http.StatusNotFound)
-}
-
-var NotFoundHandler = &notFoundHandler{}
+})
 
 type redirectHandler struct {
 	url  string
@@ -54,6 +50,26 @@ func (rh *redirectHandler) ServeHTTP(w ResponseWriter, r *Request) {
 
 func RedirectHandler(url string, code int) RouteHandler {
 	return &redirectHandler{url, code}
+}
+func cleanPath(p string) string {
+	if p == "" {
+		return "/"
+	}
+
+	if p[0] != '/' {
+		p = "/" + p
+	}
+	np := path.Clean(p)
+
+	if p[len(p)-1] == '/' && np != "/" {
+		if len(p) == len(np)+1 && strings.HasPrefix(p, np) {
+			np = p
+		} else {
+			np += "/"
+		}
+	}
+
+	return np
 }
 
 type Router struct {
@@ -76,11 +92,17 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params Params) {
 
 	host := r.URL.Host
-	path := r.URL.Path
+	path := cleanPath(r.URL.Path)
 
 	p, h, params = ro.handler(host, path, r.Method)
 
 	if h != nil {
+
+		if path != r.URL.Path {
+			u := &url.URL{Path: path, RawQuery: r.URL.RawQuery}
+			return u.Path, RedirectHandler(u.String(), http.StatusMovedPermanently), nil
+		}
+
 		return
 	}
 
