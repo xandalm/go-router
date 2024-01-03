@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -137,25 +138,6 @@ func Test_registerFunc(t *testing.T) {
 }
 
 func TestHandler(t *testing.T) {
-	t.Run("returns pattern, handler", func(t *testing.T) {
-		router := NewRouter()
-
-		pattern := "/path"
-		path := "/path"
-
-		router.Use(pattern, dummyHandler)
-
-		request, _ := http.NewRequest(http.MethodGet, newDummyURI(path), nil)
-
-		var pat string
-		var h RouteHandler
-		pat, h, _ = router.Handler(request)
-
-		if pat != pattern {
-			t.Errorf("got pattern %q, but want %q", pat, pattern)
-		}
-		assertHandler(t, dummyHandler, h)
-	})
 
 	cases := []struct {
 		pattern             string
@@ -164,6 +146,13 @@ func TestHandler(t *testing.T) {
 		expectedHandlerType reflect.Type
 		expectedParams      Params
 	}{
+		{
+			"/path",
+			newDummyURI("/path"),
+			"/path",
+			reflect.TypeOf(dummyHandler),
+			Params{},
+		},
 		{
 			"/users/{id}",
 			newDummyURI("/users/1"),
@@ -247,11 +236,10 @@ func TestHandler(t *testing.T) {
 				t.Errorf("got pattern %q, but want %q", pat, c.expectedPattern)
 			}
 			assertHandlerType(t, c.expectedHandlerType, h)
-			if !reflect.DeepEqual(c.expectedParams, params) {
-				t.Errorf("got params %v, but want %v", params, c.expectedParams)
-			}
+			assertParams(t, params, c.expectedParams)
 		})
 	}
+
 }
 
 type MockRouterHandler struct {
@@ -275,11 +263,12 @@ type routeCase struct {
 }
 
 type uriTest struct {
-	uri    string
-	method string
-	params Params
-	status int
-	body   string
+	uri            string
+	method         string
+	body           io.Reader
+	expectedParams Params
+	expectedStatus int
+	expectedBody   string
 }
 
 func TestUse(t *testing.T) {
@@ -292,7 +281,7 @@ func TestUse(t *testing.T) {
 				},
 			},
 			tests: []uriTest{
-				{newDummyURI("/users"), http.MethodGet, Params{}, http.StatusOK, ""},
+				{newDummyURI("/users"), http.MethodGet, nil, Params{}, http.StatusOK, ""},
 			},
 		},
 		{
@@ -302,7 +291,7 @@ func TestUse(t *testing.T) {
 				},
 			},
 			tests: []uriTest{
-				{newDummyURI("/users/13"), http.MethodGet, Params{"id": "13"}, http.StatusOK, ""},
+				{newDummyURI("/users/13"), http.MethodGet, nil, Params{"id": "13"}, http.StatusOK, ""},
 			},
 		},
 	}
@@ -320,13 +309,11 @@ func TestUse(t *testing.T) {
 
 					router.ServeHTTP(response, request)
 
-					assertStatus(t, response, tt.status)
+					assertStatus(t, response, tt.expectedStatus)
 
-					if !reflect.DeepEqual(c.handler.lastParams, tt.params) {
-						t.Errorf("got params %#v, but want %#v", c.handler.lastParams, tt.params)
-					}
+					assertParams(t, c.handler.lastParams, tt.expectedParams)
 
-					assertBody(t, response, tt.body)
+					assertBody(t, response, tt.expectedBody)
 				})
 			}
 		})
@@ -336,160 +323,132 @@ func TestUse(t *testing.T) {
 
 func TestGet(t *testing.T) {
 
-	cases := []routeCase{
-		{
-			path: "/products",
-			handler: &MockRouterHandler{
-				OnHandleFunc: func(w ResponseWriter, r *Request) {
-					fmt.Fprint(w, `[{"Name": "Tea"}, {"Name": "Cup Noodle"}]`)
-				},
-			},
-			tests: []uriTest{
-				{newDummyURI("/products"), http.MethodGet, Params{}, http.StatusOK, `[{"Name": "Tea"}, {"Name": "Cup Noodle"}]`},
-				{newDummyURI("/products"), http.MethodPost, Params{}, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPut, Params{}, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodDelete, Params{}, http.StatusNotFound, ""},
-			},
-		},
-	}
+	t.Run(`router with only "/products" on GET`, func(t *testing.T) {
+		router := NewRouter()
 
-	for _, c := range cases {
-		t.Run(fmt.Sprintf("add path %q", c.path), func(t *testing.T) {
-			router := &Router{}
+		router.Get("/products", dummyHandler)
 
-			router.Get(c.path, c.handler)
+		cases := []uriTest{
+			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusOK, ""},
+			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusNotFound, ""},
+			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusNotFound, ""},
+			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusNotFound, ""},
+		}
 
-			for _, tt := range c.tests {
-				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
-					request, _ := http.NewRequest(tt.method, tt.uri, nil)
-					response := httptest.NewRecorder()
+		for _, c := range cases {
+			t.Run(fmt.Sprintf("returns %d for %s %q", c.expectedStatus, c.method, c.uri), func(t *testing.T) {
+				request, _ := http.NewRequest(c.method, c.uri, nil)
+				response := httptest.NewRecorder()
 
-					router.ServeHTTP(response, request)
+				router.ServeHTTP(response, request)
 
-					assertStatus(t, response, tt.status)
-
-					assertBody(t, response, tt.body)
-				})
-			}
-		})
-	}
+				assertStatus(t, response, c.expectedStatus)
+			})
+		}
+	})
 }
 
 func TestPost(t *testing.T) {
 
-	cases := []routeCase{
-		{
-			path: "/products",
-			handler: &MockRouterHandler{
-				OnHandleFunc: func(w ResponseWriter, r *Request) {},
-			},
-			tests: []uriTest{
-				{newDummyURI("/products"), http.MethodPost, Params{}, http.StatusOK, ""},
-				{newDummyURI("/products"), http.MethodGet, Params{}, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPut, Params{}, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodDelete, Params{}, http.StatusNotFound, ""},
-			},
-		},
-	}
+	t.Run(`router with only "/products" on POST`, func(t *testing.T) {
+		router := NewRouter()
 
-	for _, c := range cases {
-		t.Run(fmt.Sprintf("add path %q", c.path), func(t *testing.T) {
-			router := &Router{}
+		router.Post("/products", dummyHandler)
 
-			router.Post(c.path, c.handler)
+		cases := []uriTest{
+			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusOK, ""},
+			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusNotFound, ""},
+			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusNotFound, ""},
+			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusNotFound, ""},
+		}
 
-			for _, tt := range c.tests {
-				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
-					request, _ := http.NewRequest(tt.method, tt.uri, nil)
-					response := httptest.NewRecorder()
+		for _, c := range cases {
+			t.Run(fmt.Sprintf("returns %d for %s %q", c.expectedStatus, c.method, c.uri), func(t *testing.T) {
+				request, _ := http.NewRequest(c.method, c.uri, nil)
+				response := httptest.NewRecorder()
 
-					router.ServeHTTP(response, request)
+				router.ServeHTTP(response, request)
 
-					assertStatus(t, response, tt.status)
-
-					assertBody(t, response, tt.body)
-				})
-			}
-		})
-	}
+				assertStatus(t, response, c.expectedStatus)
+			})
+		}
+	})
 }
 
 func TestPut(t *testing.T) {
 
-	cases := []routeCase{
-		{
-			path: "/products",
-			handler: &MockRouterHandler{
-				OnHandleFunc: func(w ResponseWriter, r *Request) {},
-			},
-			tests: []uriTest{
-				{newDummyURI("/products"), http.MethodPut, Params{}, http.StatusOK, ""},
-				{newDummyURI("/products"), http.MethodGet, Params{}, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPost, Params{}, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodDelete, Params{}, http.StatusNotFound, ""},
-			},
-		},
-	}
+	t.Run(`router with only "/products" on PUT`, func(t *testing.T) {
+		router := NewRouter()
 
-	for _, c := range cases {
-		t.Run(fmt.Sprintf("add path %q", c.path), func(t *testing.T) {
-			router := &Router{}
+		router.Put("/products", dummyHandler)
 
-			router.Put(c.path, c.handler)
+		cases := []uriTest{
+			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusOK, ""},
+			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusNotFound, ""},
+			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusNotFound, ""},
+			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusNotFound, ""},
+		}
 
-			for _, tt := range c.tests {
-				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
-					request, _ := http.NewRequest(tt.method, tt.uri, nil)
-					response := httptest.NewRecorder()
+		for _, c := range cases {
+			t.Run(fmt.Sprintf("returns %d for %s %q", c.expectedStatus, c.method, c.uri), func(t *testing.T) {
+				request, _ := http.NewRequest(c.method, c.uri, nil)
+				response := httptest.NewRecorder()
 
-					router.ServeHTTP(response, request)
+				router.ServeHTTP(response, request)
 
-					assertStatus(t, response, tt.status)
-
-					assertBody(t, response, tt.body)
-				})
-			}
-		})
-	}
+				assertStatus(t, response, c.expectedStatus)
+			})
+		}
+	})
 }
 
 func TestDelete(t *testing.T) {
 
-	cases := []routeCase{
-		{
-			path: "/products",
-			handler: &MockRouterHandler{
-				OnHandleFunc: func(w ResponseWriter, r *Request) {},
+	t.Run(`router with only "/products" on DELETE`, func(t *testing.T) {
+		router := NewRouter()
+
+		router.Delete("/products", dummyHandler)
+
+		cases := []uriTest{
+			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusOK, ""},
+			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusNotFound, ""},
+			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusNotFound, ""},
+			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusNotFound, ""},
+		}
+
+		for _, c := range cases {
+			t.Run(fmt.Sprintf("returns %d for %s %q", c.expectedStatus, c.method, c.uri), func(t *testing.T) {
+				request, _ := http.NewRequest(c.method, c.uri, nil)
+				response := httptest.NewRecorder()
+
+				router.ServeHTTP(response, request)
+
+				assertStatus(t, response, c.expectedStatus)
+			})
+		}
+	})
+}
+
+func TestRouter(t *testing.T) {
+
+	router := NewRouter()
+	t.Run(`handle to GET "/api/users" after add "/api/users" on GET`, func(t *testing.T) {
+		handler := &MockRouterHandler{
+			OnHandleFunc: func(w ResponseWriter, r *Request) {
+				fmt.Fprint(w, `[]`)
 			},
-			tests: []uriTest{
-				{newDummyURI("/products"), http.MethodDelete, Params{}, http.StatusOK, ""},
-				{newDummyURI("/products"), http.MethodGet, Params{}, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPut, Params{}, http.StatusNotFound, ""},
-				{newDummyURI("/products"), http.MethodPost, Params{}, http.StatusNotFound, ""},
-			},
-		},
-	}
+		}
+		router.Get("/api/users", handler)
 
-	for _, c := range cases {
-		t.Run(fmt.Sprintf("add path %q", c.path), func(t *testing.T) {
-			router := &Router{}
+		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/api/users"), nil)
+		response := httptest.NewRecorder()
 
-			router.Delete(c.path, c.handler)
+		router.ServeHTTP(response, request)
 
-			for _, tt := range c.tests {
-				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
-					request, _ := http.NewRequest(tt.method, tt.uri, nil)
-					response := httptest.NewRecorder()
-
-					router.ServeHTTP(response, request)
-
-					assertStatus(t, response, tt.status)
-
-					assertBody(t, response, tt.body)
-				})
-			}
-		})
-	}
+		assertStatus(t, response, http.StatusOK)
+		assertParams(t, handler.lastParams, Params{})
+		assertBody(t, response, `[]`)
+	})
 }
 
 func assertRegistered(t testing.TB, router *Router, path string) {
@@ -521,7 +480,7 @@ func assertStatus(t testing.TB, response *httptest.ResponseRecorder, status int)
 	t.Helper()
 
 	if response.Code != status {
-		t.Errorf("got status %q, but want %q", response.Code, status)
+		t.Errorf("got status %d, but want %d", response.Code, status)
 	}
 }
 
@@ -540,5 +499,13 @@ func assertHandlerType(t testing.TB, want reflect.Type, got RouteHandler) {
 	tp := reflect.TypeOf(got)
 	if tp != want {
 		t.Errorf("got handler type %v, but want %v", tp, want)
+	}
+}
+
+func assertParams(t testing.TB, got, want Params) {
+	t.Helper()
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got params %#v, but want %#v", got, want)
 	}
 }
