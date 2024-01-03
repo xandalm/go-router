@@ -1,6 +1,7 @@
 package router
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -51,6 +52,7 @@ func (rh *redirectHandler) ServeHTTP(w ResponseWriter, r *Request) {
 func RedirectHandler(url string, code int) RouteHandler {
 	return &redirectHandler{url, code}
 }
+
 func cleanPath(p string) string {
 	if p == "" {
 		return "/"
@@ -72,11 +74,22 @@ func cleanPath(p string) string {
 	return np
 }
 
+func stripHostPort(host string) string {
+	if !strings.Contains(host, ":") {
+		return host
+	}
+	host, _, err := net.SplitHostPort(host)
+	if err != nil {
+		return host
+	}
+	return host
+}
+
 type Router struct {
 	mu   sync.RWMutex
-	m    map[string]*routerEntry
-	sm   map[string]*routerEntry
-	um   map[string]*routerEntry
+	m    map[string]*routerEntry // all patterns
+	sm   map[string]*routerEntry // slashed patterns
+	um   map[string]*routerEntry // unslashed patterns
 	host bool
 }
 
@@ -92,7 +105,7 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params Params) {
 
-	host := r.URL.Host
+	host := stripHostPort(r.URL.Host)
 	path := cleanPath(r.URL.Path)
 
 	p, h, params = ro.handler(host, path, r.Method)

@@ -202,6 +202,13 @@ func TestHandler(t *testing.T) {
 			Params{},
 		},
 		{
+			"site.com/users",
+			"http://site.com:3000/users",
+			"site.com/users",
+			reflect.TypeOf(dummyHandler),
+			Params{},
+		},
+		{
 			"/users/",
 			newDummyURI("/users"),
 			"/users/",
