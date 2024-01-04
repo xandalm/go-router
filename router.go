@@ -107,7 +107,13 @@ func NewRouter() *Router {
 
 // Dispatches the request to the handler whose pattern most closely matches the request URL.
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
+	if r.RequestURI == "*" {
+		if r.ProtoAtLeast(1, 1) {
+			w.Header().Set("Connection", "close")
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	h, _, params := ro.Handler(r)
 	h.ServeHTTP(w, &Request{params: params, Request: r})
 }
@@ -126,8 +132,16 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // To the unrecognizable request path it gives a not found handler, empty pattern and nil params.
 func (ro *Router) Handler(r *http.Request) (h RouteHandler, p string, params Params) {
 
-	host := stripHostPort(r.Host)
-	path := cleanPath(r.URL.Path)
+	var host string
+	var path string
+
+	if r.Method == http.MethodConnect {
+		host = r.URL.Host
+		path = r.URL.Path
+	} else {
+		host = stripHostPort(r.Host)
+		path = cleanPath(r.URL.Path)
+	}
 
 	p, h, params = ro.handler(host, path, r.Method)
 
@@ -141,12 +155,12 @@ func (ro *Router) Handler(r *http.Request) (h RouteHandler, p string, params Par
 		return
 	}
 
-	if newPath, ok := ro.shouldRedirectToSlashPath(path); ok {
+	if newPath, ok := ro.shouldRedirectToSlashPath(host, path); ok {
 		u := &url.URL{Path: newPath, RawQuery: r.URL.RawQuery}
 		return RedirectHandler(u.String(), http.StatusMovedPermanently), u.Path, nil
 	}
 
-	if newPath, ok := ro.shouldRedirectToUnslashPath(path); ok {
+	if newPath, ok := ro.shouldRedirectToUnslashPath(host, path); ok {
 		u := &url.URL{Path: newPath, RawQuery: r.URL.RawQuery}
 		return RedirectHandler(u.String(), http.StatusMovedPermanently), u.Path, nil
 	}
@@ -189,24 +203,26 @@ func (ro *Router) handler(host, path, method string) (p string, h RouteHandler, 
 	return e.pattern, h, params
 }
 
-func (ro *Router) shouldRedirectToUnslashPath(path string) (string, bool) {
+func (ro *Router) shouldRedirectToUnslashPath(host, path string) (string, bool) {
 	ro.mu.RLock()
 	defer ro.mu.RUnlock()
 
-	l := len(path)
-	if path[l-1] != '/' {
+	if path[len(path)-1] != '/' {
 		return "", false
 	}
 
-	path = path[:l-1]
+	p := []string{path, host + path}
 
-	if _, ok := ro.um[path]; ok {
-		return path, true
-	}
+	for _, c := range p {
+		ps := c[:len(c)-1]
+		if _, ok := ro.um[ps]; ok {
+			return ps, true
+		}
 
-	for _, e := range ro.um {
-		if e.re.MatchString(path) {
-			return path, true
+		for _, e := range ro.um {
+			if e.re.MatchString(ps) {
+				return ps, true
+			}
 		}
 	}
 
@@ -214,7 +230,7 @@ func (ro *Router) shouldRedirectToUnslashPath(path string) (string, bool) {
 
 }
 
-func (ro *Router) shouldRedirectToSlashPath(path string) (string, bool) {
+func (ro *Router) shouldRedirectToSlashPath(host, path string) (string, bool) {
 	ro.mu.RLock()
 	defer ro.mu.RUnlock()
 
@@ -222,15 +238,18 @@ func (ro *Router) shouldRedirectToSlashPath(path string) (string, bool) {
 		return "", false
 	}
 
-	path = path + "/"
+	p := []string{path, host + path}
 
-	if _, ok := ro.sm[path]; ok {
-		return path, true
-	}
+	for _, c := range p {
+		ps := c + "/"
+		if _, ok := ro.sm[ps]; ok {
+			return ps, true
+		}
 
-	for _, e := range ro.sm {
-		if e.re.MatchString(path) {
-			return path, true
+		for _, e := range ro.sm {
+			if e.re.MatchString(ps) {
+				return ps, true
+			}
 		}
 	}
 

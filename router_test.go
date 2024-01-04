@@ -209,6 +209,13 @@ func TestHandler(t *testing.T) {
 			Params{},
 		},
 		{
+			"site.com/users/",
+			"http://site.com/users",
+			"site.com/users/",
+			reflect.TypeOf(&redirectHandler{}),
+			nil,
+		},
+		{
 			"/users/",
 			newDummyURI("/users"),
 			"/users/",
@@ -515,6 +522,35 @@ func TestRouter(t *testing.T) {
 		assertParams(t, handler.lastParams, Params{})
 		assertBody(t, response, `[]`)
 	})
+}
+
+func BenchmarkRouterMath(b *testing.B) {
+	r := NewRouter()
+	r.Use("/", dummyHandler)
+	r.Use("/index", dummyHandler)
+	r.Use("/home", dummyHandler)
+	r.Use("/about", dummyHandler)
+	r.Use("/contact", dummyHandler)
+	r.Use("/robots.txt", dummyHandler)
+	r.Use("/products/", dummyHandler)
+	r.Use("/products/{id}", dummyHandler)
+	r.Use("/products/{id}/image.jpg", dummyHandler)
+	r.Use("/admin", dummyHandler)
+	r.Use("/admin/products/", dummyHandler)
+	r.Use("/admin/products/create", dummyHandler)
+	r.Use("/admin/products/update", dummyHandler)
+	r.Use("/admin/products/delete", dummyHandler)
+
+	paths := []string{"/", "/notfound", "/admin/", "/admin/foo", "/contact", "/products",
+		"/products/", "/products/3/image.jpg"}
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+
+		if e := r.match(paths[i%len(paths)]); e != nil && e.pattern == "" {
+			b.Error("impossible")
+		}
+	}
+	b.StopTimer()
 }
 
 func assertRegistered(t testing.TB, router *Router, path string) {
