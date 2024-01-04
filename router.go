@@ -24,6 +24,7 @@ type RouteHandler interface {
 	ServeHTTP(ResponseWriter, *Request)
 }
 
+// An Adapter to allow the use of functions as HTTP handlers.
 type RouteHandlerFunc func(ResponseWriter, *Request)
 
 func (f RouteHandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
@@ -36,6 +37,7 @@ type routerEntry struct {
 	mh      map[string]RouteHandler
 }
 
+// Holds a simple request handler that replies HTTP 404 status
 var NotFoundHandler = RouteHandlerFunc(func(w ResponseWriter, r *Request) {
 	w.WriteHeader(http.StatusNotFound)
 })
@@ -85,6 +87,12 @@ func stripHostPort(host string) string {
 	return host
 }
 
+// Like to standard ServeMux, it's a HTTP request multiplexer.
+// Have similar characteristics, however Router brings the
+// possibility to handle params that can be exposed in patterns.
+//
+// One parameterized pattern can be registered with a it's name
+// rounded by brackets, that is /customers/{id}.
 type Router struct {
 	mu   sync.RWMutex
 	m    map[string]*routerEntry // all patterns
@@ -97,15 +105,28 @@ func NewRouter() *Router {
 	return &Router{}
 }
 
+// Dispatches the request to the handler whose pattern most closely matches the request URL.
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	_, h, params := ro.Handler(r)
+	h, _, params := ro.Handler(r)
 	h.ServeHTTP(w, &Request{params: params, Request: r})
 }
 
-func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params Params) {
+// Returns the handler for the given request accordingly to the request characteristics
+// (r.Method, r.Host and r.URL.Path), it will never be nil. If the request path is not in
+// its canonical form the result handler will be an handler that redirects to the canonical
+// path.
+//
+// Handler also returns the registered pattern that matches the request, or will match, in
+// case of a redirect handler.
+//
+// Finally, also returns identified params from the given request path, if registered pattern
+// matches one.
+//
+// To the unrecognizable request path it gives a not found handler, empty pattern and nil params.
+func (ro *Router) Handler(r *http.Request) (h RouteHandler, p string, params Params) {
 
-	host := stripHostPort(r.URL.Host)
+	host := stripHostPort(r.Host)
 	path := cleanPath(r.URL.Path)
 
 	p, h, params = ro.handler(host, path, r.Method)
@@ -114,7 +135,7 @@ func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params Par
 
 		if path != r.URL.Path {
 			u := &url.URL{Path: path, RawQuery: r.URL.RawQuery}
-			return u.Path, RedirectHandler(u.String(), http.StatusMovedPermanently), nil
+			return RedirectHandler(u.String(), http.StatusMovedPermanently), u.Path, nil
 		}
 
 		return
@@ -122,15 +143,15 @@ func (ro *Router) Handler(r *http.Request) (p string, h RouteHandler, params Par
 
 	if newPath, ok := ro.shouldRedirectToSlashPath(path); ok {
 		u := &url.URL{Path: newPath, RawQuery: r.URL.RawQuery}
-		return u.Path, RedirectHandler(u.String(), http.StatusMovedPermanently), nil
+		return RedirectHandler(u.String(), http.StatusMovedPermanently), u.Path, nil
 	}
 
 	if newPath, ok := ro.shouldRedirectToUnslashPath(path); ok {
 		u := &url.URL{Path: newPath, RawQuery: r.URL.RawQuery}
-		return u.Path, RedirectHandler(u.String(), http.StatusMovedPermanently), nil
+		return RedirectHandler(u.String(), http.StatusMovedPermanently), u.Path, nil
 	}
 
-	return "", NotFoundHandler, nil
+	return NotFoundHandler, "", nil
 }
 
 func (ro *Router) handler(host, path, method string) (p string, h RouteHandler, params Params) {

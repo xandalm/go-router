@@ -242,7 +242,7 @@ func TestHandler(t *testing.T) {
 			var pat string
 			var h RouteHandler
 			var params Params
-			pat, h, params = router.Handler(request)
+			h, pat, params = router.Handler(request)
 
 			if pat != c.expectedPattern {
 				t.Errorf("got pattern %q, but want %q", pat, c.expectedPattern)
@@ -294,7 +294,7 @@ func TestHandler(t *testing.T) {
 			var h RouteHandler
 			var params Params
 
-			pat, h, params = router.Handler(request)
+			h, pat, params = router.Handler(request)
 
 			if pat != c.pattern {
 				t.Errorf("got pattern %q, but want %q", pat, c.pattern)
