@@ -1,6 +1,9 @@
 package router
 
-import "net/http"
+import (
+	"io"
+	"net/http"
+)
 
 type Params map[string]string
 
@@ -14,4 +17,12 @@ func (r *Request) Params() Params {
 		r.params = make(Params)
 	}
 	return r.params
+}
+
+func (r *Request) ParseBodyInto(bucket *string) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return
+	}
+	*bucket = string(data)
 }

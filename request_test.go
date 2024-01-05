@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -42,6 +43,23 @@ func TestRequest(t *testing.T) {
 
 		if !reflect.DeepEqual(params, request.Params()) {
 			t.Errorf("got params %#v, but want %#v", request.Params(), params)
+		}
+	})
+}
+
+func TestParseBodyInto(t *testing.T) {
+	t.Run("parses body into string", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/words"), strings.NewReader("router"))
+
+		request := &Request{
+			Request: req,
+		}
+
+		var bucket string
+		request.ParseBodyInto(&bucket)
+
+		if bucket != "router" {
+			t.Errorf(`got %q, but want "router"`, bucket)
 		}
 	})
 }
