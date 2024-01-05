@@ -62,4 +62,19 @@ func TestParseBodyInto(t *testing.T) {
 			t.Errorf(`got %q, but want "router"`, bucket)
 		}
 	})
+
+	t.Run("parses body into integer", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/add"), strings.NewReader("5"))
+
+		request := &Request{
+			Request: req,
+		}
+
+		var bucket int
+		request.ParseBodyInto(&bucket)
+
+		if bucket != 5 {
+			t.Errorf(`got %d, but want 5`, bucket)
+		}
+	})
 }

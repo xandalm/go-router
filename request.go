@@ -3,6 +3,7 @@ package router
 import (
 	"io"
 	"net/http"
+	"strconv"
 )
 
 type Params map[string]string
@@ -19,10 +20,22 @@ func (r *Request) Params() Params {
 	return r.params
 }
 
-func (r *Request) ParseBodyInto(bucket *string) {
-	data, err := io.ReadAll(r.Body)
+func (r *Request) ParseBodyInto(v any) {
+	raw, err := io.ReadAll(r.Body)
 	if err != nil {
 		return
 	}
-	*bucket = string(data)
+
+	data := string(raw)
+
+	switch v := v.(type) {
+	case *string:
+		*v = data
+	case *int:
+		value, err := strconv.Atoi(data)
+		if err != nil {
+			return
+		}
+		*v = value
+	}
 }
