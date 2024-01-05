@@ -48,6 +48,25 @@ func TestRequest(t *testing.T) {
 }
 
 func TestParseBodyInto(t *testing.T) {
+
+	t.Run("panic if not give pointer type to ParseBodyInto", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/words"), strings.NewReader("router"))
+
+		request := &Request{
+			Request: req,
+		}
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("didn't panic")
+			}
+		}()
+
+		var bucket string
+		request.ParseBodyInto(bucket)
+	})
+
 	t.Run("parses body into string", func(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/words"), strings.NewReader("router"))
 
