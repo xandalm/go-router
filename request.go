@@ -1,7 +1,6 @@
 package router
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"reflect"
@@ -24,10 +23,6 @@ func (r *Request) Params() Params {
 
 func (r *Request) ParseBodyInto(v any) {
 
-	if reflect.TypeOf(v).Kind() != reflect.Pointer {
-		panic("router: a pointer must be given to the ParseBodyInto")
-	}
-
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
 		return
@@ -35,16 +30,22 @@ func (r *Request) ParseBodyInto(v any) {
 
 	data := string(raw)
 
-	switch v := v.(type) {
-	case *string:
-		*v = data
-	case *int:
+	value := reflect.ValueOf(v)
+
+	if value.Kind() != reflect.Pointer {
+		panic("router: a pointer must be given to the ParseBodyInto")
+	}
+
+	e := value.Elem()
+
+	switch e.Kind() {
+	case reflect.String:
+		e.SetString(data)
+	case reflect.Int:
 		value, err := strconv.Atoi(data)
 		if err != nil {
 			return
 		}
-		*v = value
-	default:
-		fmt.Println(v)
+		e.SetInt(int64(value))
 	}
 }

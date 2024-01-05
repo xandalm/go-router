@@ -96,4 +96,38 @@ func TestParseBodyInto(t *testing.T) {
 			t.Errorf(`got %d, but want 5`, bucket)
 		}
 	})
+
+	t.Run("parses body even for re-typed string", func(t *testing.T) {
+		type S string
+
+		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/words"), strings.NewReader("science"))
+
+		request := &Request{
+			Request: req,
+		}
+
+		var bucket S
+		request.ParseBodyInto(&bucket)
+
+		if bucket != "science" {
+			t.Errorf(`got %s, but want "science"`, bucket)
+		}
+	})
+
+	t.Run("parses body even for re-typed int", func(t *testing.T) {
+		type I int
+
+		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/add"), strings.NewReader("5"))
+
+		request := &Request{
+			Request: req,
+		}
+
+		var bucket I
+		request.ParseBodyInto(&bucket)
+
+		if bucket != 5 {
+			t.Errorf(`got %d, but want 5`, bucket)
+		}
+	})
 }
