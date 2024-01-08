@@ -130,4 +130,25 @@ func TestParseBodyInto(t *testing.T) {
 			t.Errorf(`got %d, but want 5`, bucket)
 		}
 	})
+
+	t.Run("parses json body into struct", func(t *testing.T) {
+		type Person struct {
+			Id   int
+			Name string
+		}
+
+		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/add"), strings.NewReader(`{"Id": 1, "Name": "Alex"}`))
+
+		request := &Request{
+			Request: req,
+		}
+
+		var got Person
+		request.ParseBodyInto(&got)
+		want := Person{1, "Alex"}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %+v, but want %+v", got, want)
+		}
+	})
 }
