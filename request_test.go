@@ -50,11 +50,7 @@ func TestRequest(t *testing.T) {
 func TestParseBodyInto(t *testing.T) {
 
 	t.Run("panic if not give pointer type to ParseBodyInto", func(t *testing.T) {
-		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/words"), strings.NewReader("router"))
-
-		request := &Request{
-			Request: req,
-		}
+		request := newRequest(http.MethodPost, newDummyURI("/words"), "science")
 
 		defer func() {
 			r := recover()
@@ -68,11 +64,7 @@ func TestParseBodyInto(t *testing.T) {
 	})
 
 	t.Run("parses body into string", func(t *testing.T) {
-		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/words"), strings.NewReader("router"))
-
-		request := &Request{
-			Request: req,
-		}
+		request := newRequest(http.MethodPost, newDummyURI("/words"), "router")
 
 		var bucket string
 		request.ParseBodyInto(&bucket)
@@ -83,11 +75,7 @@ func TestParseBodyInto(t *testing.T) {
 	})
 
 	t.Run("parses body into integer", func(t *testing.T) {
-		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/add"), strings.NewReader("5"))
-
-		request := &Request{
-			Request: req,
-		}
+		request := newRequest(http.MethodPut, newDummyURI("/add"), "5")
 
 		var bucket int
 		request.ParseBodyInto(&bucket)
@@ -100,11 +88,7 @@ func TestParseBodyInto(t *testing.T) {
 	t.Run("parses body even for re-typed string", func(t *testing.T) {
 		type S string
 
-		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/words"), strings.NewReader("science"))
-
-		request := &Request{
-			Request: req,
-		}
+		request := newRequest(http.MethodPost, newDummyURI("/words"), "science")
 
 		var bucket S
 		request.ParseBodyInto(&bucket)
@@ -117,11 +101,7 @@ func TestParseBodyInto(t *testing.T) {
 	t.Run("parses body even for re-typed int", func(t *testing.T) {
 		type I int
 
-		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/add"), strings.NewReader("5"))
-
-		request := &Request{
-			Request: req,
-		}
+		request := newRequest(http.MethodPut, newDummyURI("/add"), "5")
 
 		var bucket I
 		request.ParseBodyInto(&bucket)
@@ -137,11 +117,7 @@ func TestParseBodyInto(t *testing.T) {
 			Name string
 		}
 
-		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/add"), strings.NewReader(`{"Id": 1, "Name": "Alex"}`))
-
-		request := &Request{
-			Request: req,
-		}
+		request := newRequest(http.MethodPost, newDummyURI("/persons"), `{"Id": 1, "Name": "Alex"}`)
 
 		var got Person
 		request.ParseBodyInto(&got)
@@ -151,4 +127,21 @@ func TestParseBodyInto(t *testing.T) {
 			t.Errorf("got %+v, but want %+v", got, want)
 		}
 	})
+
+	t.Run("returns error for incompatible int", func(*testing.T) {
+		request := newRequest(http.MethodPost, newDummyURI("/sub"), "a")
+
+		var bucket int
+		err := request.ParseBodyInto(&bucket)
+		if err != ErrUnsupportedInt {
+			t.Errorf("got error %v, but want %v", err, ErrUnsupportedInt)
+		}
+	})
+}
+
+func newRequest(method, url, body string) *Request {
+	r, _ := http.NewRequest(method, url, strings.NewReader(body))
+	return &Request{
+		Request: r,
+	}
 }

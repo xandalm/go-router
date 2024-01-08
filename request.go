@@ -2,6 +2,8 @@ package router
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"reflect"
@@ -22,12 +24,17 @@ func (r *Request) Params() Params {
 	return r.params
 }
 
-func (r *Request) ParseBodyInto(v any) {
+var (
+	ErrPointerNeeded  = errors.New("router: a pointer must be given to the ParseBodyInto")
+	ErrUnsupportedInt = errors.New("router: cannot parse request body into int")
+)
+
+func (r *Request) ParseBodyInto(v any) error {
 
 	value := reflect.ValueOf(v)
 
 	if value.Kind() != reflect.Pointer {
-		panic("router: a pointer must be given to the ParseBodyInto")
+		panic(ErrPointerNeeded)
 	}
 
 	e := value.Elem()
@@ -38,12 +45,18 @@ func (r *Request) ParseBodyInto(v any) {
 	case reflect.Int:
 		value, err := strconv.Atoi(readBody(r))
 		if err != nil {
-			return
+			return ErrUnsupportedInt
 		}
 		e.SetInt(int64(value))
 	case reflect.Struct:
-		json.NewDecoder(r.Body).Decode(v)
+		err := json.NewDecoder(r.Body).Decode(v)
+		if err != nil {
+			return fmt.Errorf("router: cannot parse request body into %T", v)
+		}
+	default:
+		return fmt.Errorf("router: %T is not supported", v)
 	}
+	return nil
 }
 
 func readBody(r *Request) string {
