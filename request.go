@@ -25,8 +25,9 @@ func (r *Request) Params() Params {
 }
 
 var (
-	ErrPointerNeeded  = errors.New("router: a pointer must be given to the ParseBodyInto")
+	ErrMissingPointer = errors.New("router: a pointer must be given to parse request body into")
 	ErrUnsupportedInt = errors.New("router: cannot parse request body into int")
+	ErrNilPointer     = errors.New("router: a initialized pointer must be given to parse request body into")
 )
 
 func (r *Request) ParseBodyInto(v any) error {
@@ -34,7 +35,11 @@ func (r *Request) ParseBodyInto(v any) error {
 	value := reflect.ValueOf(v)
 
 	if value.Kind() != reflect.Pointer {
-		panic(ErrPointerNeeded)
+		panic(ErrMissingPointer)
+	}
+
+	if value.IsNil() {
+		panic(ErrNilPointer)
 	}
 
 	e := value.Elem()

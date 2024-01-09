@@ -49,7 +49,7 @@ func TestRequest(t *testing.T) {
 
 func TestParseBodyInto(t *testing.T) {
 
-	t.Run("panic if not give pointer type to ParseBodyInto", func(t *testing.T) {
+	t.Run("panic if not give pointer", func(t *testing.T) {
 		request := newRequest(http.MethodPost, newDummyURI("/words"), "science")
 
 		defer func() {
@@ -60,6 +60,20 @@ func TestParseBodyInto(t *testing.T) {
 		}()
 
 		var bucket string
+		request.ParseBodyInto(bucket)
+	})
+
+	t.Run("panic if give a nil pointer", func(t *testing.T) {
+		request := newRequest(http.MethodPost, newDummyURI("/words"), "science")
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("didn't panic")
+			}
+		}()
+
+		var bucket *string
 		request.ParseBodyInto(bucket)
 	})
 
