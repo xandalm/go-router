@@ -17,6 +17,7 @@ The router.ResponseWriter is a alias for http.ResponseWriter
 ## Request
 
 The router.Request is a embedded http.Request, that can hold the params recognized in the request path.
+Which you can get through Params()
 
 This type has a ParseBodyInto(), that can parse request body into a variable of the type int, float, string or struct give as an argument.
 
