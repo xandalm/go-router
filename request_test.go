@@ -81,21 +81,12 @@ func TestParseBodyInto(t *testing.T) {
 		request := newRequest(http.MethodPost, newDummyURI("/words"), "router")
 
 		var bucket string
-		request.ParseBodyInto(&bucket)
+		err := request.ParseBodyInto(&bucket)
+
+		assertNoError(t, err)
 
 		if bucket != "router" {
 			t.Errorf(`got %q, but want "router"`, bucket)
-		}
-	})
-
-	t.Run("parses body into integer", func(t *testing.T) {
-		request := newRequest(http.MethodPut, newDummyURI("/add"), "5")
-
-		var bucket int
-		request.ParseBodyInto(&bucket)
-
-		if bucket != 5 {
-			t.Errorf(`got %d, but want 5`, bucket)
 		}
 	})
 
@@ -105,10 +96,25 @@ func TestParseBodyInto(t *testing.T) {
 		request := newRequest(http.MethodPost, newDummyURI("/words"), "science")
 
 		var bucket S
-		request.ParseBodyInto(&bucket)
+		err := request.ParseBodyInto(&bucket)
+
+		assertNoError(t, err)
 
 		if bucket != "science" {
 			t.Errorf(`got %s, but want "science"`, bucket)
+		}
+	})
+
+	t.Run("parses body into integer", func(t *testing.T) {
+		request := newRequest(http.MethodPut, newDummyURI("/add"), "5")
+
+		var bucket int
+		err := request.ParseBodyInto(&bucket)
+
+		assertNoError(t, err)
+
+		if bucket != 5 {
+			t.Errorf(`got %d, but want 5`, bucket)
 		}
 	})
 
@@ -118,27 +124,12 @@ func TestParseBodyInto(t *testing.T) {
 		request := newRequest(http.MethodPut, newDummyURI("/add"), "5")
 
 		var bucket I
-		request.ParseBodyInto(&bucket)
+		err := request.ParseBodyInto(&bucket)
+
+		assertNoError(t, err)
 
 		if bucket != 5 {
 			t.Errorf(`got %d, but want 5`, bucket)
-		}
-	})
-
-	t.Run("parses json body into struct", func(t *testing.T) {
-		type Person struct {
-			Id   int
-			Name string
-		}
-
-		request := newRequest(http.MethodPost, newDummyURI("/persons"), `{"Id": 1, "Name": "Alex"}`)
-
-		var got Person
-		request.ParseBodyInto(&got)
-		want := Person{1, "Alex"}
-
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("got %+v, but want %+v", got, want)
 		}
 	})
 
@@ -151,11 +142,51 @@ func TestParseBodyInto(t *testing.T) {
 			t.Errorf("got error %v, but want %v", err, ErrUnsupportedInt)
 		}
 	})
+
+	t.Run("parses body into float", func(t *testing.T) {
+		request := newRequest(http.MethodPut, newDummyURI("/add"), "3.14")
+
+		var bucket float64
+		err := request.ParseBodyInto(&bucket)
+
+		assertNoError(t, err)
+
+		if bucket != 3.14 {
+			t.Errorf(`got %f, but want 3.14`, bucket)
+		}
+	})
+
+	t.Run("parses json body into struct", func(t *testing.T) {
+		type Person struct {
+			Id   int
+			Name string
+		}
+
+		request := newRequest(http.MethodPost, newDummyURI("/persons"), `{"Id": 1, "Name": "Alex"}`)
+
+		var got Person
+		want := Person{1, "Alex"}
+		err := request.ParseBodyInto(&got)
+
+		assertNoError(t, err)
+
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %+v, but want %+v", got, want)
+		}
+	})
 }
 
 func newRequest(method, url, body string) *Request {
 	r, _ := http.NewRequest(method, url, strings.NewReader(body))
 	return &Request{
 		Request: r,
+	}
+}
+
+func assertNoError(t testing.TB, err error) {
+	t.Helper()
+
+	if err != nil {
+		t.Fatalf("expected no error, %v", err)
 	}
 }
