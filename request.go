@@ -32,6 +32,7 @@ var (
 	ErrUnsupportedInt   = errors.New("router: cannot parse request body into int")
 	ErrUnsupportedFloat = errors.New("router: cannot parse request body into float")
 	ErrNilPointer       = errors.New("router: a initialized pointer must be given to parse request body into")
+	ErrNilBody          = errors.New("router: nothing to read")
 )
 
 // Try to parse request body into the v, which
@@ -42,6 +43,10 @@ var (
 // Only JSON schematized request body can be parsed
 // into a struct.
 func (r *Request) ParseBodyInto(v any) error {
+
+	if r.Body == nil {
+		return ErrNilBody
+	}
 
 	value := getPtrValue(v)
 

@@ -174,6 +174,18 @@ func TestParseBodyInto(t *testing.T) {
 			t.Errorf("got %+v, but want %+v", got, want)
 		}
 	})
+
+	t.Run("cause nothing to read error", func(t *testing.T) {
+
+		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/add"), nil)
+		request := &Request{Request: req}
+		var got int
+		err := request.ParseBodyInto(&got)
+
+		if err != ErrNilBody {
+			t.Errorf("got error %v but want %v", got, ErrNilBody)
+		}
+	})
 }
 
 func newRequest(method, url, body string) *Request {
