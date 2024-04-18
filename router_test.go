@@ -10,13 +10,13 @@ import (
 	"testing"
 )
 
-type dummyRouteHandler struct{}
+type dummyHandler struct{}
 
-func (h *dummyRouteHandler) ServeHTTP(w ResponseWriter, r *Request) {
+func (h *dummyHandler) ServeHTTP(w ResponseWriter, r *Request) {
 }
 
-var dummyHandler = &dummyRouteHandler{}
-var dummyHandlerFunc = func(w ResponseWriter, r *Request) {
+var vDummyHandler = &dummyHandler{}
+var vDummyHandlerFunc = func(w ResponseWriter, r *Request) {
 }
 
 func Test_register(t *testing.T) {
@@ -30,7 +30,7 @@ func Test_register(t *testing.T) {
 				t.Error("didn't panic")
 			}
 		}()
-		router.register("", dummyHandler, MethodAll)
+		router.register("", vDummyHandler, MethodAll)
 	})
 
 	t.Run("panic on nil handler", func(t *testing.T) {
@@ -56,8 +56,8 @@ func Test_register(t *testing.T) {
 			}
 		}()
 
-		router.register("/path", dummyHandler, MethodAll)
-		router.register("/path", dummyHandler, MethodAll)
+		router.register("/path", vDummyHandler, MethodAll)
+		router.register("/path", vDummyHandler, MethodAll)
 	})
 
 	userRE := regexp.MustCompile(`^\/users$`)
@@ -81,12 +81,12 @@ func Test_register(t *testing.T) {
 	for _, c := range cases {
 		t.Run(fmt.Sprintf(`add %q to %s`, c.pattern, c.method), func(t *testing.T) {
 
-			router.register(c.pattern, dummyHandler, c.method)
+			router.register(c.pattern, vDummyHandler, c.method)
 
 			assertRegistered(t, router, c.pattern)
 
 			e := router.m[c.pattern]
-			assertHandler(t, e.mh[c.method], dummyHandler)
+			assertHandler(t, e.mh[c.method], vDummyHandler)
 
 			if !reflect.DeepEqual(c.re, e.re) {
 				t.Errorf("got regexp %q, but want %q", e.re, c.re)
@@ -126,11 +126,11 @@ func Test_registerFunc(t *testing.T) {
 	for _, c := range cases {
 		t.Run(fmt.Sprintf(`add %q to %s`, c.pattern, c.method), func(t *testing.T) {
 
-			router.registerFunc(c.pattern, dummyHandlerFunc, c.method)
+			router.registerFunc(c.pattern, vDummyHandlerFunc, c.method)
 
 			assertRegistered(t, router, c.pattern)
 
-			checkHandlerFunc(t, router, c.pattern, c.method, dummyHandlerFunc)
+			checkHandlerFunc(t, router, c.pattern, c.method, vDummyHandlerFunc)
 		})
 	}
 }
@@ -148,14 +148,14 @@ func TestHandler(t *testing.T) {
 			"/path",
 			newDummyURI("/path"),
 			"/path",
-			reflect.TypeOf(dummyHandler),
+			reflect.TypeOf(vDummyHandler),
 			Params{},
 		},
 		{
 			"/users/{id}",
 			newDummyURI("/users/1"),
 			"/users/{id}",
-			reflect.TypeOf(dummyHandler),
+			reflect.TypeOf(vDummyHandler),
 			Params{
 				"id": "1",
 			},
@@ -164,7 +164,7 @@ func TestHandler(t *testing.T) {
 			"/users/{id}",
 			newDummyURI("/users/6dbd2"),
 			"/users/{id}",
-			reflect.TypeOf(dummyHandler),
+			reflect.TypeOf(vDummyHandler),
 			Params{
 				"id": "6dbd2",
 			},
@@ -173,7 +173,7 @@ func TestHandler(t *testing.T) {
 			"/users/{id}",
 			newDummyURI("/users/d033fdc6-dbd2-427c-b18c-a41aa6449d75"),
 			"/users/{id}",
-			reflect.TypeOf(dummyHandler),
+			reflect.TypeOf(vDummyHandler),
 			Params{
 				"id": "d033fdc6-dbd2-427c-b18c-a41aa6449d75",
 			},
@@ -182,7 +182,7 @@ func TestHandler(t *testing.T) {
 			"/users/{id}",
 			newDummyURI("/users/{id}"),
 			"/users/{id}",
-			reflect.TypeOf(dummyHandler),
+			reflect.TypeOf(vDummyHandler),
 			Params{
 				"id": "{id}",
 			},
@@ -198,14 +198,14 @@ func TestHandler(t *testing.T) {
 			"site.com/users",
 			"http://site.com/users",
 			"site.com/users",
-			reflect.TypeOf(dummyHandler),
+			reflect.TypeOf(vDummyHandler),
 			Params{},
 		},
 		{
 			"site.com/users",
 			"http://site.com:3000/users",
 			"site.com/users",
-			reflect.TypeOf(dummyHandler),
+			reflect.TypeOf(vDummyHandler),
 			Params{},
 		},
 		{
@@ -242,12 +242,12 @@ func TestHandler(t *testing.T) {
 		t.Run(fmt.Sprintf("when listen to %q and request %q", c.pattern, c.uri), func(t *testing.T) {
 			router := NewRouter()
 
-			router.Use(c.pattern, dummyHandler)
+			router.UsePattern(c.pattern, vDummyHandler)
 
 			request, _ := http.NewRequest(http.MethodGet, c.uri, nil)
 
 			var pat string
-			var h RouteHandler
+			var h Handler
 			var params Params
 			h, pat, params = router.Handler(request)
 
@@ -271,8 +271,8 @@ func TestHandler(t *testing.T) {
 			},
 		}
 
-		router.Use("/users/", handlerOne)
-		router.Use("/users", handlerTwo)
+		router.UsePattern("/users/", handlerOne)
+		router.UsePattern("/users", handlerTwo)
 
 		cases := []struct {
 			path    string
@@ -298,7 +298,7 @@ func TestHandler(t *testing.T) {
 			request, _ := http.NewRequest(http.MethodGet, newDummyURI(c.path), nil)
 
 			var pat string
-			var h RouteHandler
+			var h Handler
 			var params Params
 
 			h, pat, params = router.Handler(request)
@@ -372,7 +372,7 @@ func TestUse(t *testing.T) {
 		t.Run(fmt.Sprintf("add %q pattern", c.path), func(t *testing.T) {
 			router := &Router{}
 
-			router.Use(c.path, c.handler)
+			router.UsePattern(c.path, c.handler)
 
 			for _, tt := range c.tests {
 				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
@@ -398,7 +398,7 @@ func TestGet(t *testing.T) {
 	t.Run(`router with only "/products" on GET`, func(t *testing.T) {
 		router := NewRouter()
 
-		router.Get("/products", dummyHandler)
+		router.Get("/products", vDummyHandler)
 
 		cases := []uriTest{
 			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusOK, ""},
@@ -425,7 +425,7 @@ func TestPost(t *testing.T) {
 	t.Run(`router with only "/products" on POST`, func(t *testing.T) {
 		router := NewRouter()
 
-		router.Post("/products", dummyHandler)
+		router.Post("/products", vDummyHandler)
 
 		cases := []uriTest{
 			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusOK, ""},
@@ -452,7 +452,7 @@ func TestPut(t *testing.T) {
 	t.Run(`router with only "/products" on PUT`, func(t *testing.T) {
 		router := NewRouter()
 
-		router.Put("/products", dummyHandler)
+		router.Put("/products", vDummyHandler)
 
 		cases := []uriTest{
 			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusOK, ""},
@@ -479,7 +479,7 @@ func TestDelete(t *testing.T) {
 	t.Run(`router with only "/products" on DELETE`, func(t *testing.T) {
 		router := NewRouter()
 
-		router.Delete("/products", dummyHandler)
+		router.Delete("/products", vDummyHandler)
 
 		cases := []uriTest{
 			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusOK, ""},
@@ -526,20 +526,20 @@ func TestRouter(t *testing.T) {
 
 func BenchmarkRouterMath(b *testing.B) {
 	r := NewRouter()
-	r.Use("/", dummyHandler)
-	r.Use("/index", dummyHandler)
-	r.Use("/home", dummyHandler)
-	r.Use("/about", dummyHandler)
-	r.Use("/contact", dummyHandler)
-	r.Use("/robots.txt", dummyHandler)
-	r.Use("/products/", dummyHandler)
-	r.Use("/products/{id}", dummyHandler)
-	r.Use("/products/{id}/image.jpg", dummyHandler)
-	r.Use("/admin", dummyHandler)
-	r.Use("/admin/products/", dummyHandler)
-	r.Use("/admin/products/create", dummyHandler)
-	r.Use("/admin/products/update", dummyHandler)
-	r.Use("/admin/products/delete", dummyHandler)
+	r.UsePattern("/", vDummyHandler)
+	r.UsePattern("/index", vDummyHandler)
+	r.UsePattern("/home", vDummyHandler)
+	r.UsePattern("/about", vDummyHandler)
+	r.UsePattern("/contact", vDummyHandler)
+	r.UsePattern("/robots.txt", vDummyHandler)
+	r.UsePattern("/products/", vDummyHandler)
+	r.UsePattern("/products/{id}", vDummyHandler)
+	r.UsePattern("/products/{id}/image.jpg", vDummyHandler)
+	r.UsePattern("/admin", vDummyHandler)
+	r.UsePattern("/admin/products/", vDummyHandler)
+	r.UsePattern("/admin/products/create", vDummyHandler)
+	r.UsePattern("/admin/products/update", vDummyHandler)
+	r.UsePattern("/admin/products/delete", vDummyHandler)
 
 	paths := []string{"/", "/notfound", "/admin/", "/admin/foo", "/contact", "/products",
 		"/products/", "/products/3/image.jpg"}
@@ -561,7 +561,7 @@ func assertRegistered(t testing.TB, router *Router, path string) {
 	}
 }
 
-func assertHandler(t testing.TB, got, want RouteHandler) {
+func assertHandler(t testing.TB, got, want Handler) {
 	t.Helper()
 
 	if got != want {
@@ -573,11 +573,11 @@ func checkHandlerFunc(t *testing.T, router *Router, pattern, method string, hand
 	t.Helper()
 
 	e := router.m[pattern]
-	got := e.mh[method].(RouteHandlerFunc)
-	assertHandlerFunc(t, got, RouteHandlerFunc(dummyHandlerFunc))
+	got := e.mh[method].(HandlerFunc)
+	assertHandlerFunc(t, got, HandlerFunc(vDummyHandlerFunc))
 }
 
-func assertHandlerFunc(t testing.TB, got RouteHandlerFunc, want RouteHandlerFunc) {
+func assertHandlerFunc(t testing.TB, got HandlerFunc, want HandlerFunc) {
 	t.Helper()
 
 	if !reflect.DeepEqual(reflect.ValueOf(got), reflect.ValueOf(want)) {
@@ -602,7 +602,7 @@ func assertBody(t testing.TB, response *httptest.ResponseRecorder, want string) 
 	}
 }
 
-func assertHandlerType(t testing.TB, want reflect.Type, got RouteHandler) {
+func assertHandlerType(t testing.TB, want reflect.Type, got Handler) {
 	t.Helper()
 
 	tp := reflect.TypeOf(got)

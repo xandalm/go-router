@@ -20,25 +20,29 @@ const (
 
 type ResponseWriter http.ResponseWriter
 
-type RouteHandler interface {
+type Handler interface {
 	ServeHTTP(ResponseWriter, *Request)
 }
 
-// An Adapter to allow the use of functions as HTTP handlers.
-type RouteHandlerFunc func(ResponseWriter, *Request)
+type MiddlewareHandler interface {
+	ServeHTTP(ResponseWriter, *Request, func(any))
+}
 
-func (f RouteHandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
+// An Adapter to allow the use of functions as HTTP handlers.
+type HandlerFunc func(ResponseWriter, *Request)
+
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 	f(w, r)
 }
 
 type routerEntry struct {
 	pattern string
 	re      *regexp.Regexp
-	mh      map[string]RouteHandler
+	mh      map[string]Handler
 }
 
 // Holds a simple request handler that replies HTTP 404 status
-var NotFoundHandler = RouteHandlerFunc(func(w ResponseWriter, r *Request) {
+var NotFoundHandler = HandlerFunc(func(w ResponseWriter, r *Request) {
 	w.WriteHeader(http.StatusNotFound)
 })
 
@@ -51,7 +55,7 @@ func (rh *redirectHandler) ServeHTTP(w ResponseWriter, r *Request) {
 	http.Redirect(w, r.Request, rh.url, rh.code)
 }
 
-func RedirectHandler(url string, code int) RouteHandler {
+func RedirectHandler(url string, code int) Handler {
 	return &redirectHandler{url, code}
 }
 
@@ -130,7 +134,7 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // matches one.
 //
 // To the unrecognizable request path it gives a not found handler, empty pattern and nil params.
-func (ro *Router) Handler(r *http.Request) (h RouteHandler, p string, params Params) {
+func (ro *Router) Handler(r *http.Request) (h Handler, p string, params Params) {
 
 	var host string
 	var path string
@@ -168,7 +172,7 @@ func (ro *Router) Handler(r *http.Request) (h RouteHandler, p string, params Par
 	return NotFoundHandler, "", nil
 }
 
-func (ro *Router) handler(host, path, method string) (p string, h RouteHandler, params Params) {
+func (ro *Router) handler(host, path, method string) (p string, h Handler, params Params) {
 	var e *routerEntry
 
 	if ro.host {
@@ -291,7 +295,7 @@ func createRegExp(pattern string) *regexp.Regexp {
 	return regexp.MustCompile(strings.ReplaceAll(builder.String(), "/", `\/`))
 }
 
-func (ro *Router) register(pattern string, handler RouteHandler, method string) {
+func (ro *Router) register(pattern string, handler Handler, method string) {
 	ro.mu.Lock()
 	defer ro.mu.Unlock()
 
@@ -316,7 +320,7 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 		e = &routerEntry{
 			pattern: pattern,
 			re:      createRegExp(pattern),
-			mh:      make(map[string]RouteHandler),
+			mh:      make(map[string]Handler),
 		}
 	}
 
@@ -343,23 +347,23 @@ func (ro *Router) registerFunc(pattern string, handler func(w ResponseWriter, r 
 	if handler == nil {
 		panic("router: nil handler")
 	}
-	ro.register(pattern, RouteHandlerFunc(handler), method)
+	ro.register(pattern, HandlerFunc(handler), method)
 }
 
 // Records the given pattern and handler to handle the corresponding path.
 // Use is a generic method correspondent
-func (ro *Router) Use(pattern string, handler RouteHandler) {
+func (ro *Router) UsePattern(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodAll)
 }
 
 // Similar to Use method, but this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
-func (ro *Router) UseFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
-	ro.registerFunc(pattern, RouteHandlerFunc(handler), MethodAll)
+func (ro *Router) UsePatternFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
+	ro.registerFunc(pattern, HandlerFunc(handler), MethodAll)
 }
 
 // Records the given pattern and handler to handle the corresponding path only on GET method.
-func (ro *Router) Get(pattern string, handler RouteHandler) {
+func (ro *Router) Get(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodGet)
 }
 
@@ -370,7 +374,7 @@ func (ro *Router) GetFunc(pattern string, handler func(w ResponseWriter, r *Requ
 }
 
 // Records the given pattern and handler to handle the corresponding path only on POST method.
-func (ro *Router) Post(pattern string, handler RouteHandler) {
+func (ro *Router) Post(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodPost)
 }
 
@@ -381,7 +385,7 @@ func (ro *Router) PostFunc(pattern string, handler func(w ResponseWriter, r *Req
 }
 
 // Records the given pattern and handler to handle the corresponding path only on PUT method.
-func (ro *Router) Put(pattern string, handler RouteHandler) {
+func (ro *Router) Put(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodPut)
 }
 
@@ -392,7 +396,7 @@ func (ro *Router) PutFunc(pattern string, handler func(w ResponseWriter, r *Requ
 }
 
 // Records the given pattern and handler to handle the corresponding path only on DELETE method.
-func (ro *Router) Delete(pattern string, handler RouteHandler) {
+func (ro *Router) Delete(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodDelete)
 }
 
