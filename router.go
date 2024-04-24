@@ -337,7 +337,12 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 		ro.um[e.pattern] = e
 	}
 
-	ro.host = pattern[0] != '/'
+	if pattern[0] == '/' {
+		ro.namespace(pattern[1:])
+	} else {
+		ro.host = true
+		ro.namespace(pattern)
+	}
 }
 
 func (ro *Router) registerFunc(pattern string, handler func(w ResponseWriter, r *Request), method string) {
@@ -408,9 +413,7 @@ type routerNamespace struct {
 	ns map[string]*routerNamespace
 }
 
-func (ro *Router) Namespace(name string) *routerNamespace {
-	ro.mu.Lock()
-	defer ro.mu.Unlock()
+func (ro *Router) namespace(name string) *routerNamespace {
 
 	if ro.ns == nil {
 		ro.ns = map[string]*routerNamespace{}
@@ -424,4 +427,11 @@ func (ro *Router) Namespace(name string) *routerNamespace {
 	ro.ns[name] = n
 
 	return n
+}
+
+func (ro *Router) Namespace(name string) *routerNamespace {
+	ro.mu.Lock()
+	defer ro.mu.Unlock()
+
+	return ro.namespace(name)
 }

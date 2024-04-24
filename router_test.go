@@ -502,17 +502,47 @@ func TestDelete(t *testing.T) {
 }
 
 func TestNamespace(t *testing.T) {
-	router := NewRouter()
+	t.Run("create a namespace", func(t *testing.T) {
+		router := NewRouter()
 
-	nsAdmin := router.Namespace("admin")
+		nsAdmin := router.Namespace("admin")
 
-	if nsAdmin == nil {
-		t.Error("didn't get namespace, got nil")
-	}
+		if nsAdmin == nil {
+			t.Error("didn't get namespace, got nil")
+		}
 
-	if _, ok := router.ns["admin"]; !ok {
-		t.Error("didn't register namespace into router")
-	}
+		if _, ok := router.ns["admin"]; !ok {
+			t.Error("didn't register namespace into router")
+		}
+	})
+	t.Run("create namespaces indirectly", func(t *testing.T) {
+		router := NewRouter()
+
+		cases := []struct {
+			tname string
+			fn    func(string, func(ResponseWriter, *Request))
+			path  string
+		}{
+			{"after registering use", router.UseFunc, "use"},
+			{"after registering get", router.GetFunc, "get"},
+			{"after registering put", router.PutFunc, "put"},
+			{"after registering post", router.PostFunc, "post"},
+			{"after registering delete", router.DeleteFunc, "delete"},
+			{"even for stacked", router.GetFunc, "admin/products"},
+			{"even for stacked with param", router.GetFunc, "customers/{id}"},
+		}
+
+		for _, c := range cases {
+			t.Run(c.tname, func(t *testing.T) {
+				c.fn("/"+c.path, func(w ResponseWriter, r *Request) {})
+
+				if _, ok := router.ns[c.path]; !ok {
+					t.Error("didn't register namespace into router")
+				}
+			})
+		}
+
+	})
 }
 
 func TestRouter(t *testing.T) {
