@@ -98,6 +98,7 @@ type Router struct {
 	m    map[string]*routerEntry // all patterns
 	sm   map[string]*routerEntry // slashed patterns
 	um   map[string]*routerEntry // unslashed patterns
+	ns   map[string]*routerNamespace
 	host bool
 }
 
@@ -400,4 +401,27 @@ func (ro *Router) Delete(pattern string, handler RouteHandler) {
 // And wrap it, to act like a RouteHandler.
 func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodDelete)
+}
+
+type routerNamespace struct {
+	r  *Router
+	ns map[string]*routerNamespace
+}
+
+func (ro *Router) Namespace(name string) *routerNamespace {
+	ro.mu.Lock()
+	defer ro.mu.Unlock()
+
+	if ro.ns == nil {
+		ro.ns = map[string]*routerNamespace{}
+	}
+
+	n := &routerNamespace{
+		r:  ro,
+		ns: map[string]*routerNamespace{},
+	}
+
+	ro.ns[name] = n
+
+	return n
 }

@@ -501,6 +501,20 @@ func TestDelete(t *testing.T) {
 	})
 }
 
+func TestNamespace(t *testing.T) {
+	router := NewRouter()
+
+	nsAdmin := router.Namespace("admin")
+
+	if nsAdmin == nil {
+		t.Error("didn't get namespace, got nil")
+	}
+
+	if _, ok := router.ns["admin"]; !ok {
+		t.Error("didn't register namespace into router")
+	}
+}
+
 func TestRouter(t *testing.T) {
 
 	router := NewRouter()
