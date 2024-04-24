@@ -1,6 +1,6 @@
 # Go Router
 
-It's based on standard lib HTTP ServerMux. With new features:
+It's based on standard lib HTTP ServerMux (Go 1.21). With new features:
 - RegExp match based seek.
 - Param based patterns in path analysis.
 - Instead Handle/HandleFunc methods, now we have Use/UseFunc methods, this can deal with all HTTP methods.
