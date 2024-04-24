@@ -419,14 +419,28 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		ro.ns = map[string]*routerNamespace{}
 	}
 
-	n := &routerNamespace{
+	if n, ok := ro.ns[name]; ok {
+		return n
+	}
+
+	// new namespace (nn)
+	nn := &routerNamespace{
 		r:  ro,
 		ns: map[string]*routerNamespace{},
 	}
 
-	ro.ns[name] = n
+	for k, v := range ro.ns {
+		last := strings.TrimPrefix(k, name+"/")
+		if last == k {
+			continue
+		}
+		nn.ns[last] = v
+		delete(ro.ns, k)
+	}
 
-	return n
+	ro.ns[name] = nn
+
+	return nn
 }
 
 func (ro *Router) Namespace(name string) *routerNamespace {

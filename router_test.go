@@ -543,6 +543,36 @@ func TestNamespace(t *testing.T) {
 		}
 
 	})
+	t.Run("returns existent namespace in case of duplication", func(t *testing.T) {
+		router := NewRouter()
+
+		n1 := router.Namespace("api")
+		n2 := router.Namespace("api")
+
+		if n1 != n2 {
+			t.Error("didn't same namespace")
+		}
+	})
+	t.Run("split an existent namespace if the given name is its prefix", func(t *testing.T) {
+		r := NewRouter()
+
+		r.Namespace("api/v1/admin")
+		r.Namespace("api")
+
+		if len(r.ns) != 1 {
+			t.Fatal("expected that the router has 1 namespace")
+		}
+
+		apiNamespace, ok := r.ns["api"]
+		if !ok {
+			t.Fatal(`expected that the router holds "api" namespace`)
+		}
+
+		if _, ok := apiNamespace.ns["v1/admin"]; !ok {
+			t.Error(`expected that the "api" namespace holds "v1/admin" namespace`)
+		}
+
+	})
 }
 
 func TestRouter(t *testing.T) {
