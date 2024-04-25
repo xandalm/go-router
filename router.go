@@ -409,7 +409,9 @@ func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *R
 }
 
 type routerNamespace struct {
+	// n  string // name
 	r  *Router
+	p  *routerNamespace // parent
 	ns map[string]*routerNamespace
 }
 
@@ -423,22 +425,54 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		return n
 	}
 
-	// new namespace (nn)
+	subnames := strings.Split(name, "/")
+
+	ns := ro.ns
+	var (
+		acc string           // accumulated name
+		fn  *routerNamespace // possible falling node
+	)
+	for _, name := range subnames {
+		acc += name
+		found, ok := ns[acc]
+		if ok {
+			fn = found
+			ns = fn.ns // next level
+			acc = ""
+		} else {
+			acc += "/"
+		}
+	}
+
+	// new node (nn)
 	nn := &routerNamespace{
 		r:  ro,
 		ns: map[string]*routerNamespace{},
 	}
 
-	for k, v := range ro.ns {
-		last := strings.TrimPrefix(k, name+"/")
+	if fn == nil {
+		// hold router children (namespace list from this level)
+		ns = ro.ns
+	} else {
+		// hold falling node children (namespace list from this level)
+		ns = fn.ns
+		// set falling node parent to be parent of the new node
+		nn.p = fn.p
+		// set new node as parent of the falling node
+		fn.p = nn
+	}
+
+	for k, v := range ns {
+		last := strings.TrimPrefix(k, acc)
 		if last == k {
 			continue
 		}
+		delete(ns, k)
+		v.p = nn
 		nn.ns[last] = v
-		delete(ro.ns, k)
 	}
 
-	ro.ns[name] = nn
+	ns[acc[:len(acc)-1]] = nn // ignoring slash
 
 	return nn
 }

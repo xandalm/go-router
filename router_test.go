@@ -555,23 +555,45 @@ func TestNamespace(t *testing.T) {
 	})
 	t.Run("split an existent namespace if the given name is its prefix", func(t *testing.T) {
 		r := NewRouter()
-
 		r.Namespace("api/v1/admin")
-		r.Namespace("api")
 
-		if len(r.ns) != 1 {
-			t.Fatal("expected that the router has 1 namespace")
-		}
+		t.Run("router holds api and api holds v1/admin", func(t *testing.T) {
+			r.Namespace("api")
 
-		apiNamespace, ok := r.ns["api"]
-		if !ok {
-			t.Fatal(`expected that the router holds "api" namespace`)
-		}
+			if len(r.ns) != 1 {
+				t.Fatal("expected that the router has 1 namespace")
+			}
 
-		if _, ok := apiNamespace.ns["v1/admin"]; !ok {
-			t.Error(`expected that the "api" namespace holds "v1/admin" namespace`)
-		}
+			apiNamespace, ok := r.ns["api"]
+			if !ok {
+				t.Fatal(`expected that the router holds "api" namespace`)
+			}
 
+			if _, ok := apiNamespace.ns["v1/admin"]; !ok {
+				t.Error(`expected that the "api" namespace holds "v1/admin" namespace`)
+			}
+		})
+		t.Run("router holds api, api holds v1 and v1 holds admin", func(t *testing.T) {
+			r.Namespace("api/v1")
+
+			if len(r.ns) != 1 {
+				t.Fatal("expected that the router has 1 namespace")
+			}
+
+			apiNamespace, ok := r.ns["api"]
+			if !ok {
+				t.Fatal(`expected that the router holds "api" namespace`)
+			}
+
+			v1Namespace, ok := apiNamespace.ns["v1"]
+			if !ok {
+				t.Fatal(`expected that the "api" namespace holds "v1" namespace`)
+			}
+
+			if _, ok := v1Namespace.ns["admin"]; !ok {
+				t.Error(`expected that the "v1" namespace holds "admin" namespace`)
+			}
+		})
 	})
 }
 
