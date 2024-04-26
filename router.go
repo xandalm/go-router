@@ -414,6 +414,16 @@ type routerNamespace struct {
 	ns map[string]*routerNamespace
 }
 
+func (n *routerNamespace) Namespace(name string) *routerNamespace {
+	nn := &routerNamespace{
+		n.r,
+		n,
+		map[string]*routerNamespace{},
+	}
+	n.ns[name] = nn
+	return nn
+}
+
 func (ro *Router) closer(name string) (n *routerNamespace, path string) {
 	subnames := strings.Split(name, "/")
 

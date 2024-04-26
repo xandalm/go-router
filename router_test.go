@@ -608,6 +608,35 @@ func TestNamespace(t *testing.T) {
 	})
 }
 
+func TestRouterNamespace_Namespace(t *testing.T) {
+	t.Run("create namespace from a namespace", func(t *testing.T) {
+		n := &routerNamespace{
+			NewRouter(),
+			nil,
+			map[string]*routerNamespace{},
+		}
+
+		nn := n.Namespace("v1")
+
+		got, ok := n.ns["v1"]
+		if !ok {
+			t.Fatal("didn't create namespace")
+		}
+
+		if got != nn {
+			t.Fatalf("didn't get the namespace")
+		}
+
+		if got.r != n.r {
+			t.Fatalf("got namespace with router %p, but want router %p", got.r, n.r)
+		}
+
+		if got.p != n {
+			t.Errorf("the namespace parent is not %p, got %p", n, got.p)
+		}
+	})
+}
+
 func TestRouter(t *testing.T) {
 
 	router := NewRouter()
