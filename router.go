@@ -409,10 +409,34 @@ func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *R
 }
 
 type routerNamespace struct {
-	// n  string // name
 	r  *Router
 	p  *routerNamespace // parent
 	ns map[string]*routerNamespace
+}
+
+func (ro *Router) closer(name string) (n *routerNamespace, path string) {
+	subnames := strings.Split(name, "/")
+
+	ns := ro.ns
+
+	var acc string
+	for _, name := range subnames {
+		acc += name
+		if found, ok := ns[acc]; ok {
+			n = found
+			ns = n.ns // next level
+			path += acc + "/"
+			acc = ""
+		} else {
+			acc += "/"
+		}
+	}
+
+	if path != "" && path != name {
+		path = path[:len(path)-1]
+	}
+
+	return
 }
 
 func (ro *Router) namespace(name string) *routerNamespace {
@@ -421,28 +445,12 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		ro.ns = map[string]*routerNamespace{}
 	}
 
-	if n, ok := ro.ns[name]; ok {
+	n, path := ro.closer(name)
+
+	if path == name {
 		return n
 	}
-
-	subnames := strings.Split(name, "/")
-
-	ns := ro.ns
-	var (
-		acc string           // accumulated name
-		fn  *routerNamespace // possible falling node
-	)
-	for _, name := range subnames {
-		acc += name
-		found, ok := ns[acc]
-		if ok {
-			fn = found
-			ns = fn.ns // next level
-			acc = ""
-		} else {
-			acc += "/"
-		}
-	}
+	name = strings.TrimPrefix(name, path+"/")
 
 	// new node (nn)
 	nn := &routerNamespace{
@@ -450,20 +458,21 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		ns: map[string]*routerNamespace{},
 	}
 
-	if fn == nil {
+	var ns map[string]*routerNamespace
+	if n == nil {
 		// hold router children (namespace list from this level)
 		ns = ro.ns
 	} else {
 		// hold falling node children (namespace list from this level)
-		ns = fn.ns
+		ns = n.ns
 		// set falling node parent to be parent of the new node
-		nn.p = fn.p
+		nn.p = n.p
 		// set new node as parent of the falling node
-		fn.p = nn
+		n.p = nn
 	}
 
 	for k, v := range ns {
-		last := strings.TrimPrefix(k, acc)
+		last := strings.TrimPrefix(k, name+"/")
 		if last == k {
 			continue
 		}
@@ -472,7 +481,7 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		nn.ns[last] = v
 	}
 
-	ns[acc[:len(acc)-1]] = nn // ignoring slash
+	ns[name] = nn // ignoring slash
 
 	return nn
 }

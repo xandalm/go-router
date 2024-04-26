@@ -543,16 +543,6 @@ func TestNamespace(t *testing.T) {
 		}
 
 	})
-	t.Run("returns existent namespace in case of duplication", func(t *testing.T) {
-		router := NewRouter()
-
-		n1 := router.Namespace("api")
-		n2 := router.Namespace("api")
-
-		if n1 != n2 {
-			t.Error("didn't same namespace")
-		}
-	})
 	t.Run("split an existent namespace if the given name is its prefix", func(t *testing.T) {
 		r := NewRouter()
 		r.Namespace("api/v1/admin")
@@ -594,6 +584,27 @@ func TestNamespace(t *testing.T) {
 				t.Error(`expected that the "v1" namespace holds "admin" namespace`)
 			}
 		})
+	})
+	t.Run("returns existent namespace in case of duplication", func(t *testing.T) {
+		router := NewRouter()
+
+		cases := []struct {
+			name string
+		}{
+			{"api"},
+			{"api/v1"},
+		}
+
+		for _, c := range cases {
+			t.Run(fmt.Sprintf("for %s", c.name), func(t *testing.T) {
+				a := router.Namespace(c.name)
+				b := router.Namespace(c.name)
+
+				if a != b {
+					t.Error("didn't get the same namespace")
+				}
+			})
+		}
 	})
 }
 
