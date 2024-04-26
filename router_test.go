@@ -511,9 +511,7 @@ func TestNamespace(t *testing.T) {
 			t.Error("didn't get namespace, got nil")
 		}
 
-		if _, ok := router.ns["admin"]; !ok {
-			t.Error("didn't register namespace into router")
-		}
+		assertRouterHasNamespace(t, router, "admin")
 	})
 	t.Run("create namespaces indirectly", func(t *testing.T) {
 		router := NewRouter()
@@ -536,9 +534,7 @@ func TestNamespace(t *testing.T) {
 			t.Run(c.tname, func(t *testing.T) {
 				c.fn("/"+c.path, func(w ResponseWriter, r *Request) {})
 
-				if _, ok := router.ns[c.path]; !ok {
-					t.Error("didn't register namespace into router")
-				}
+				assertRouterHasNamespace(t, router, c.path)
 			})
 		}
 
@@ -554,14 +550,9 @@ func TestNamespace(t *testing.T) {
 				t.Fatal("expected that the router has 1 namespace")
 			}
 
-			apiNamespace, ok := r.ns["api"]
-			if !ok {
-				t.Fatal(`expected that the router holds "api" namespace`)
-			}
+			assertRouterHasNamespace(t, r, "api")
 
-			if _, ok := apiNamespace.ns["v1/admin"]; !ok {
-				t.Error(`expected that the "api" namespace holds "v1/admin" namespace`)
-			}
+			assertNamespaceHasNamespace(t, r.ns["api"], "v1/admin")
 		})
 		t.Run("router holds api, api holds v1 and v1 holds admin", func(t *testing.T) {
 			r.Namespace("api/v1")
@@ -570,19 +561,13 @@ func TestNamespace(t *testing.T) {
 				t.Fatal("expected that the router has 1 namespace")
 			}
 
-			apiNamespace, ok := r.ns["api"]
-			if !ok {
-				t.Fatal(`expected that the router holds "api" namespace`)
-			}
+			assertRouterHasNamespace(t, r, "api")
 
-			v1Namespace, ok := apiNamespace.ns["v1"]
-			if !ok {
-				t.Fatal(`expected that the "api" namespace holds "v1" namespace`)
-			}
+			apiNamespace := r.ns["api"]
+			assertNamespaceHasNamespace(t, apiNamespace, "v1")
 
-			if _, ok := v1Namespace.ns["admin"]; !ok {
-				t.Error(`expected that the "v1" namespace holds "admin" namespace`)
-			}
+			v1Namespace := apiNamespace.ns["v1"]
+			assertNamespaceHasNamespace(t, v1Namespace, "admin")
 		})
 	})
 	t.Run("returns existent namespace in case of duplication", func(t *testing.T) {
@@ -618,11 +603,9 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 
 		nn := n.Namespace("v1")
 
-		got, ok := n.ns["v1"]
-		if !ok {
-			t.Fatal("didn't create namespace")
-		}
+		assertNamespaceHasNamespace(t, n, "v1")
 
+		got := n.ns["v1"]
 		if got != nn {
 			t.Fatalf("didn't get the namespace")
 		}
@@ -632,9 +615,21 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 		}
 
 		if got.p != n {
-			t.Errorf("the namespace parent is not %p, got %p", n, got.p)
+			t.Fatalf("the namespace parent is not %p, got %p", n, got.p)
 		}
+
+		t.Run("if prefix already exists then create a sub-namespace", func(t *testing.T) {
+			n.Namespace("v1/admin")
+
+			if len(n.ns) > 1 {
+				t.Fatalf("there is more than one namespaces at namespace(%p), %v", n, n.ns)
+			}
+
+			assertNamespaceHasNamespace(t, n, "v1")
+			assertNamespaceHasNamespace(t, n.ns["v1"], "admin")
+		})
 	})
+
 }
 
 func TestRouter(t *testing.T) {
@@ -752,5 +747,29 @@ func assertParams(t testing.TB, got, want Params) {
 
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got params %#v, but want %#v", got, want)
+	}
+}
+
+func assertNamespaceParent(t testing.TB, n, p *routerNamespace) {
+	t.Helper()
+
+	if n.p != p {
+		t.Fatalf("the namespace parent is not %p, got %p", p, n.p)
+	}
+}
+
+func assertRouterHasNamespace(t testing.TB, r *Router, n string) {
+	t.Helper()
+
+	if _, ok := r.ns[n]; !ok {
+		t.Fatalf("there is no %q namespace in %v", n, r.ns)
+	}
+}
+
+func assertNamespaceHasNamespace(t testing.TB, rn *routerNamespace, n string) {
+	t.Helper()
+
+	if _, ok := rn.ns[n]; !ok {
+		t.Fatalf("there is no %q namespace in %v", n, rn.ns)
 	}
 }

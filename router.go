@@ -414,20 +414,61 @@ type routerNamespace struct {
 	ns map[string]*routerNamespace
 }
 
-func (n *routerNamespace) Namespace(name string) *routerNamespace {
-	nn := &routerNamespace{
-		n.r,
-		n,
-		map[string]*routerNamespace{},
+func (na *routerNamespace) namespace(name string) *routerNamespace {
+
+	if na.ns == nil {
+		na.ns = map[string]*routerNamespace{}
 	}
-	n.ns[name] = nn
+
+	n, path := closer(na.ns, name)
+
+	if path == name {
+		return n
+	}
+	name = strings.TrimPrefix(name, path+"/")
+
+	// new node (nn)
+	nn := &routerNamespace{
+		r:  na.r,
+		p:  na,
+		ns: map[string]*routerNamespace{},
+	}
+
+	var ns map[string]*routerNamespace
+	if n == nil {
+		// hold router children (namespace list from this level)
+		ns = na.ns
+	} else {
+		// hold falling node children (namespace list from this level)
+		ns = n.ns
+		// set falling node parent to be parent of the new node
+		nn.p = n.p
+		// set new node as parent of the falling node
+		n.p = nn
+	}
+
+	for k, v := range ns {
+		last := strings.TrimPrefix(k, name+"/")
+		if last == k {
+			continue
+		}
+		delete(ns, k)
+		v.p = nn
+		nn.ns[last] = v
+	}
+
+	ns[name] = nn // ignoring slash
+
 	return nn
 }
 
-func (ro *Router) closer(name string) (n *routerNamespace, path string) {
-	subnames := strings.Split(name, "/")
+func (na *routerNamespace) Namespace(name string) *routerNamespace {
 
-	ns := ro.ns
+	return na.namespace(name)
+}
+
+func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, path string) {
+	subnames := strings.Split(name, "/")
 
 	var acc string
 	for _, name := range subnames {
@@ -455,7 +496,7 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		ro.ns = map[string]*routerNamespace{}
 	}
 
-	n, path := ro.closer(name)
+	n, path := closer(ro.ns, name)
 
 	if path == name {
 		return n
