@@ -618,15 +618,31 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 			t.Fatalf("the namespace parent is not %p, got %p", n, got.p)
 		}
 
+		t.Run("return the previous created namespace", func(t *testing.T) {
+			got := n.Namespace("v1")
+
+			if got != nn {
+				t.Error("didn't get the previous namespace")
+			}
+		})
 		t.Run("if prefix already exists then create a sub-namespace", func(t *testing.T) {
-			n.Namespace("v1/admin")
+			n.Namespace("v1/admin/users")
 
 			if len(n.ns) > 1 {
 				t.Fatalf("there is more than one namespaces at namespace(%p), %v", n, n.ns)
 			}
 
 			assertNamespaceHasNamespace(t, n, "v1")
-			assertNamespaceHasNamespace(t, n.ns["v1"], "admin")
+			assertNamespaceHasNamespace(t, n.ns["v1"], "admin/users")
+		})
+		t.Run("split an existent namespace if the given name is its prefix", func(t *testing.T) {
+			n.Namespace("v1/admin")
+
+			assertNamespaceHasNamespace(t, n, "v1")
+			v1 := n.ns["v1"]
+			assertNamespaceHasNamespace(t, v1, "admin")
+			admin := v1.ns["admin"]
+			assertNamespaceHasNamespace(t, admin, "users")
 		})
 	})
 
