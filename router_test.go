@@ -645,7 +645,18 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 			assertNamespaceHasNamespace(t, admin, "users")
 		})
 	})
+	t.Run("namespace is reachable from the router", func(t *testing.T) {
+		r := NewRouter()
+		api := r.Namespace("api")
 
+		v1 := api.Namespace("v1")
+
+		got := r.Namespace("api/v1")
+
+		if got != v1 {
+			t.Error("unable to reach namespace from the router")
+		}
+	})
 }
 
 func TestRouter(t *testing.T) {
