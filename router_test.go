@@ -30,33 +30,6 @@ func TestRouter_namespace(t *testing.T) {
 			t.Error("didn't get namespace, got nil")
 		}
 	})
-	t.Run("do not duplicate or overwritten namespace", func(t *testing.T) {
-		r := &Router{}
-		r.namespace("api")
-		assertRouterHasNamespace(t, r, "api")
-		before := r.ns["api"]
-
-		r.namespace("api")
-		assertRouterHasNamespace(t, r, "api")
-		after := r.ns["api"]
-
-		if len(r.ns) > 1 {
-			t.Fatalf("namespace was duplicated, %v", r.ns)
-		}
-
-		if before != after {
-			t.Errorf("namespace was overwritten, want %p but got %p", before, after)
-		}
-
-		t.Run("return the same namespace", func(t *testing.T) {
-			got := r.namespace("api")
-			want := after
-
-			if got != want {
-				t.Errorf("got %p but want %p", got, want)
-			}
-		})
-	})
 	t.Run("split an existent namespace if the given name is its prefix", func(t *testing.T) {
 		r := &Router{}
 		r.namespace("api/v1/admin")
@@ -87,6 +60,64 @@ func TestRouter_namespace(t *testing.T) {
 			v1Namespace := apiNamespace.ns["v1"]
 			assertNamespaceHasNamespace(t, v1Namespace, "admin")
 		})
+	})
+	t.Run("do not duplicate or overwritten namespace", func(t *testing.T) {
+		r := &Router{}
+		r.namespace("api")
+		assertRouterHasNamespace(t, r, "api")
+		before := r.ns["api"]
+
+		r.namespace("api")
+		assertRouterHasNamespace(t, r, "api")
+		after := r.ns["api"]
+
+		if len(r.ns) > 1 {
+			t.Fatalf("namespace was duplicated, %v", r.ns)
+		}
+
+		if before != after {
+			t.Errorf("namespace was overwritten, want %p but got %p", before, after)
+		}
+
+		t.Run("return the same namespace", func(t *testing.T) {
+			got := r.namespace("api")
+			want := after
+
+			if got != want {
+				t.Errorf("got %p but want %p", got, want)
+			}
+		})
+	})
+	t.Run("can create namespace with param", func(t *testing.T) {
+		router := &Router{}
+
+		n := router.namespace("images/{img}")
+
+		assertRouterHasNamespace(t, router, "images/{any}")
+		if n == nil {
+			t.Error("didn't get namespace")
+		}
+	})
+	t.Run("panic if the given namespace starts with param", func(t *testing.T) {
+		router := &Router{}
+
+		cases := []string{
+			"{param}",
+			"{param}/abc",
+			"{param1}/{param2}",
+		}
+
+		for _, name := range cases {
+			t.Run("for namespace name "+name, func(t *testing.T) {
+				defer func() {
+					r := recover()
+					if r == nil || r != ErrParamAsNamespace {
+						t.Errorf("didn't get expected panic, got %v", r)
+					}
+				}()
+				router.namespace(name)
+			})
+		}
 	})
 }
 

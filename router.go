@@ -490,7 +490,31 @@ func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, pa
 	return
 }
 
+const ErrParamAsNamespace = "the given namespace starts with param"
+
+// This function checks for isolated param as namespace ocurrence.
+// If it happens then it will panic.
+// Otherwise will replace params into generalized params
+// As example, the path:
+//
+//	"/some/path/{PARAM_NAME}"
+//
+// Will be normalized to:
+//
+//	"/some/path/{any}"
+//
+// Finally returning the parsed name.
+func parseNamespace(name string) string {
+	if regexp.MustCompile(`^\{[^\/]+\}`).MatchString(name) {
+		panic(ErrParamAsNamespace)
+	}
+	name = regexp.MustCompile(`\{[^\/]+\}`).ReplaceAllString(name, "{any}")
+	return name
+}
+
 func (ro *Router) namespace(name string) *routerNamespace {
+
+	name = parseNamespace(name)
 
 	if ro.ns == nil {
 		ro.ns = map[string]*routerNamespace{}
