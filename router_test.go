@@ -30,6 +30,14 @@ func TestRouter_namespace(t *testing.T) {
 			t.Error("didn't get namespace, got nil")
 		}
 	})
+	t.Run("create a namespace in a correspondent prefix namespace", func(t *testing.T) {
+		router := &Router{}
+
+		admin := router.namespace("admin")
+		router.namespace("admin/users")
+		assertRouterHasNamespace(t, router, "admin")
+		assertNamespaceHasNamespace(t, admin, "users")
+	})
 	t.Run("split an existent namespace if the given name is its prefix", func(t *testing.T) {
 		r := &Router{}
 		r.namespace("api/v1/admin")
@@ -88,14 +96,24 @@ func TestRouter_namespace(t *testing.T) {
 			}
 		})
 	})
-	t.Run("can create namespace with param", func(t *testing.T) {
+	t.Run("can create namespace with params", func(t *testing.T) {
 		router := &Router{}
 
-		n := router.namespace("images/{img}")
+		cases := []struct {
+			namespace, check string
+		}{
+			{"images/{img}", "images/{}"},
+			{"videos/{v}/frame/{f}", "videos/{}/frame/{}"},
+			{"path/{p1}/{p2}", "path/{}/{}"},
+		}
 
-		assertRouterHasNamespace(t, router, "images/{any}")
-		if n == nil {
-			t.Error("didn't get namespace")
+		for _, c := range cases {
+			n := router.namespace(c.namespace)
+
+			assertRouterHasNamespace(t, router, c.check)
+			if n == nil {
+				t.Error("didn't get namespace")
+			}
 		}
 	})
 	t.Run("panic if the given namespace starts with param", func(t *testing.T) {
@@ -118,6 +136,15 @@ func TestRouter_namespace(t *testing.T) {
 				router.namespace(name)
 			})
 		}
+	})
+	t.Run("param namespace can hold a namespace", func(t *testing.T) {
+		router := &Router{}
+		router.namespace("customers/{id}")
+		router.namespace("customers/{id}/addresses")
+
+		assertRouterHasNamespace(t, router, "customers/{}")
+		n := router.namespace("customers/{}")
+		assertNamespaceHasNamespace(t, n, "addresses")
 	})
 }
 

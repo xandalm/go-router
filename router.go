@@ -508,7 +508,7 @@ func parseNamespace(name string) string {
 	if regexp.MustCompile(`^\{[^\/]+\}`).MatchString(name) {
 		panic(ErrParamAsNamespace)
 	}
-	name = regexp.MustCompile(`\{[^\/]+\}`).ReplaceAllString(name, "{any}")
+	name = regexp.MustCompile(`\{[^\/]+\}`).ReplaceAllString(name, "{}")
 	return name
 }
 
