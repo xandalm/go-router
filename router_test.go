@@ -224,6 +224,7 @@ func TestRouter_register(t *testing.T) {
 		{"/users", userRE, MethodPut},
 		{"/users", userRE, MethodDelete},
 		{"/users/{id}", regexp.MustCompile(`^\/users\/(?P<id>[^\/]+)$`), MethodGet},
+		{"/", regexp.MustCompile(`^\/?$`), MethodGet},
 	}
 
 	router := &Router{}
@@ -354,6 +355,13 @@ func TestRouter_Handler(t *testing.T) {
 			"/api/v1/partners",
 			reflect.TypeOf(&redirectHandler{}),
 			nil,
+		},
+		{
+			"/",
+			newDummyURI(""),
+			"/",
+			reflect.TypeOf(dummyHandler),
+			Params{},
 		},
 	}
 
@@ -796,9 +804,12 @@ func checkRegisteredEntry(t *testing.T, router *Router, pattern string, re *rege
 	eu, es := findRouterEntry(router, pattern)
 
 	var e *routerEntry
-	if eu != nil {
+	switch {
+	case eu == nil && es == nil:
+		e = router.e
+	case eu != nil:
 		e = eu
-	} else {
+	case es != nil:
 		e = es
 	}
 
@@ -817,7 +828,7 @@ func assertHandler(t testing.TB, got, want RouteHandler) {
 	t.Helper()
 
 	if got != want {
-		t.Errorf("got handler %v, but want %v", got, want)
+		t.Fatalf("got handler %v, but want %v", got, want)
 	}
 }
 

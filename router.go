@@ -119,7 +119,7 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Returns the handler for the given request accordingly to the request characteristics
 // (r.Method, r.Host and r.URL.Path), it will never be nil. If the request path is not in
-// its canonical form the result handler will be an handler that redirects to the canonical
+// its canonical form, the result handler will be an handler that redirects to the canonical
 // path.
 //
 // Handler also returns the registered pattern that matches the request, or will match, in
@@ -146,7 +146,7 @@ func (ro *Router) Handler(r *http.Request) (h RouteHandler, p string, params Par
 
 	if h != nil {
 
-		if path != r.URL.Path {
+		if path != "/" && path != r.URL.Path {
 			u := &url.URL{Path: path, RawQuery: r.URL.RawQuery}
 			return RedirectHandler(u.String(), http.StatusMovedPermanently), u.Path, nil
 		}
@@ -249,8 +249,11 @@ func (ro *Router) match(path string) *routerEntry {
 	ro.mu.RLock()
 	defer ro.mu.RUnlock()
 
-	npath := strings.TrimPrefix(path, "/")
-	n, _ := closer(ro.ns, npath)
+	if path == "/" {
+		return ro.e
+	}
+
+	n, _ := closer(ro.ns, strings.TrimPrefix(path, "/"))
 
 	if n == nil {
 		return nil
@@ -306,13 +309,16 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 	}
 
 	if pattern == "/" {
+		// handle for http://example.url and http://example.url/
 		if ro.e != nil {
 			panic("router: multiple registration into " + pattern)
 		}
 		ro.e = &routerEntry{
 			pattern: pattern,
-			re:      createRegExp(pattern),
-			mh:      make(map[string]RouteHandler),
+			re:      regexp.MustCompile(`^\/?$`),
+			mh: map[string]RouteHandler{
+				method: handler,
+			},
 		}
 		return
 	}
