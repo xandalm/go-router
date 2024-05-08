@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -83,7 +84,7 @@ func TestRouter_namespace(t *testing.T) {
 			assertNamespaceHasNamespace(t, n, c.inNamespace)
 		}
 	})
-	t.Run("if the given name is a prefix of the an existent namespace then split and insert", func(t *testing.T) {
+	t.Run("if the given name is a prefix of the an existent namespace then split", func(t *testing.T) {
 		r := &Router{}
 		r.namespace("api/v1/admin")
 
@@ -187,24 +188,24 @@ func TestRouter_register(t *testing.T) {
 		router := &Router{}
 
 		cases := []struct {
-			path   string
-			method string
+			pattern   string
+			method    string
+			namespace string
 		}{
-			{"use", MethodAll},
-			{"get", MethodGet},
-			{"put", MethodPut},
-			{"post", MethodPost},
-			{"delete", MethodDelete},
-			{"admin/products", MethodGet},
-			{"customers/{id}", MethodGet},
+			{"/use", MethodAll, "use"},
+			{"/get", MethodGet, "get"},
+			{"/put", MethodPut, "put"},
+			{"/post", MethodPost, "post"},
+			{"/delete", MethodDelete, "delete"},
+			{"/admin/products", MethodGet, "admin/products"},
+			{"/customers/{id}", MethodGet, "customers/{}"},
 		}
 
 		for _, c := range cases {
-			pattern := "/" + c.path
-			t.Run(fmt.Sprintf("registering %s method on %s", c.method, pattern), func(t *testing.T) {
-				router.register(pattern, dummyHandler, c.method)
+			t.Run(fmt.Sprintf("registering %s method on %s", c.method, c.pattern), func(t *testing.T) {
+				router.register(c.pattern, dummyHandler, c.method)
 
-				assertRouterHasNamespace(t, router, c.path)
+				assertRouterHasNamespace(t, router, c.namespace)
 			})
 		}
 	})
@@ -232,14 +233,7 @@ func TestRouter_register(t *testing.T) {
 
 			router.register(c.pattern, dummyHandler, c.method)
 
-			assertRegistered(t, router, c.pattern)
-
-			e := router.m[c.pattern]
-			assertHandler(t, e.mh[c.method], dummyHandler)
-
-			if !reflect.DeepEqual(c.re, e.re) {
-				t.Errorf("got regexp %q, but want %q", e.re, c.re)
-			}
+			checkRegisteredEntry(t, router, c.pattern, c.re, c.method, dummyHandler)
 		})
 	}
 }
@@ -258,30 +252,6 @@ func TestRouter_registerFunc(t *testing.T) {
 
 		router.registerFunc("/path", nil, MethodAll)
 	})
-
-	cases := []struct {
-		pattern string
-		method  string
-	}{
-		{"/users", MethodAll},
-		{"/users", MethodGet},
-		{"/users", MethodPost},
-		{"/users", MethodPut},
-		{"/users", MethodDelete},
-	}
-
-	router := &Router{}
-
-	for _, c := range cases {
-		t.Run(fmt.Sprintf(`add %q to %s`, c.pattern, c.method), func(t *testing.T) {
-
-			router.registerFunc(c.pattern, dummyHandlerFunc, c.method)
-
-			assertRegistered(t, router, c.pattern)
-
-			checkHandlerFunc(t, router, c.pattern, c.method, dummyHandlerFunc)
-		})
-	}
 }
 
 func TestRouter_Handler(t *testing.T) {
@@ -667,6 +637,8 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 		n := &routerNamespace{
 			NewRouter(),
 			nil,
+			nil,
+			nil,
 			map[string]*routerNamespace{},
 		}
 
@@ -780,11 +752,64 @@ func BenchmarkRouterMath(b *testing.B) {
 	b.StopTimer()
 }
 
-func assertRegistered(t testing.TB, router *Router, path string) {
+func closestNamespace(router *Router, path string) (n *routerNamespace, p string) {
+	ns := router.ns
+
+	path = parseNamespace(path)
+	r := regexp.MustCompile(`\/[^\/]+$`)
+	var search string
+	for path != "" {
+		search = path
+		for search != "" {
+			if f, ok := ns[search]; ok {
+				path = strings.TrimPrefix(strings.TrimPrefix(path, search), "/")
+				ns = f.ns
+				n = f
+				break
+			}
+			if f, ok := ns["{}"]; ok {
+				path = strings.TrimPrefix(strings.TrimPrefix(path, search), "/")
+				ns = f.ns
+				n = f
+				break
+			}
+			search = r.ReplaceAllString(search, "")
+		}
+	}
+
+	return
+}
+
+func findRouterEntry(router *Router, path string) (unslashed *routerEntry, slashed *routerEntry) {
+	n, p := closestNamespace(router, path)
+
+	if n == nil || p != "" {
+		return nil, nil
+	}
+
+	return n.eu, n.es
+}
+
+func checkRegisteredEntry(t *testing.T, router *Router, pattern string, re *regexp.Regexp, method string, handler RouteHandler) {
 	t.Helper()
 
-	if _, ok := router.m[path]; !ok {
-		t.Fatal("not registered the pattern")
+	eu, es := findRouterEntry(router, pattern)
+
+	var e *routerEntry
+	if eu != nil {
+		e = eu
+	} else {
+		e = es
+	}
+
+	if e == nil {
+		t.Fatal("didn't registered entry")
+	}
+
+	assertHandler(t, e.mh[method], handler)
+
+	if !reflect.DeepEqual(re, e.re) {
+		t.Errorf("got regexp %q, but want %q", e.re, re)
 	}
 }
 
@@ -794,14 +819,6 @@ func assertHandler(t testing.TB, got, want RouteHandler) {
 	if got != want {
 		t.Errorf("got handler %v, but want %v", got, want)
 	}
-}
-
-func checkHandlerFunc(t *testing.T, router *Router, pattern, method string, handler func(ResponseWriter, *Request)) {
-	t.Helper()
-
-	e := router.m[pattern]
-	got := e.mh[method].(RouteHandlerFunc)
-	assertHandlerFunc(t, got, RouteHandlerFunc(dummyHandlerFunc))
 }
 
 func assertHandlerFunc(t testing.TB, got RouteHandlerFunc, want RouteHandlerFunc) {

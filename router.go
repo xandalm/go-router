@@ -95,10 +95,8 @@ func stripHostPort(host string) string {
 // rounded by brackets, that is /customers/{id}.
 type Router struct {
 	mu   sync.RWMutex
-	m    map[string]*routerEntry // all patterns
-	sm   map[string]*routerEntry // slashed patterns
-	um   map[string]*routerEntry // unslashed patterns
 	ns   map[string]*routerNamespace
+	e    *routerEntry // handle with "/" (the root)
 	host bool
 }
 
@@ -216,14 +214,9 @@ func (ro *Router) shouldRedirectToUnslashPath(host, path string) (string, bool) 
 
 	for _, c := range p {
 		ps := c[:len(c)-1]
-		if _, ok := ro.um[ps]; ok {
+		n, _ := closer(ro.ns, parseNamespace(ps))
+		if n != nil && n.eu != nil && n.eu.re.MatchString(ps) {
 			return ps, true
-		}
-
-		for _, e := range ro.um {
-			if e.re.MatchString(ps) {
-				return ps, true
-			}
 		}
 	}
 
@@ -243,14 +236,9 @@ func (ro *Router) shouldRedirectToSlashPath(host, path string) (string, bool) {
 
 	for _, c := range p {
 		ps := c + "/"
-		if _, ok := ro.sm[ps]; ok {
+		n, _ := closer(ro.ns, parseNamespace(ps))
+		if n != nil && n.es != nil && n.es.re.MatchString(ps) {
 			return ps, true
-		}
-
-		for _, e := range ro.sm {
-			if e.re.MatchString(ps) {
-				return ps, true
-			}
 		}
 	}
 
@@ -261,16 +249,19 @@ func (ro *Router) match(path string) *routerEntry {
 	ro.mu.RLock()
 	defer ro.mu.RUnlock()
 
-	// Check exactly match
-	e, ok := ro.m[path]
-	if ok && e.re.MatchString(path) {
-		return e
+	npath := strings.TrimPrefix(path, "/")
+	n, _ := closer(ro.ns, npath)
+
+	if n == nil {
+		return nil
 	}
 
-	for _, e := range ro.m {
-		if e.re.MatchString(path) {
-			return e
-		}
+	if n.eu != nil && n.eu.re.MatchString(path) {
+		return n.eu
+	}
+
+	if n.es != nil && n.es.re.MatchString(path) {
+		return n.es
 	}
 
 	return nil
@@ -289,7 +280,17 @@ func createRegExp(pattern string) *regexp.Regexp {
 
 	builder.WriteString("$")
 
-	return regexp.MustCompile(strings.ReplaceAll(builder.String(), "/", `\/`))
+	str := regexp.MustCompile(`\/|\.`).ReplaceAllStringFunc(
+		builder.String(),
+		func(s string) string {
+			if s == "/" {
+				return `\/`
+			}
+			return `\.`
+		},
+	)
+
+	return regexp.MustCompile(str)
 }
 
 func (ro *Router) register(pattern string, handler RouteHandler, method string) {
@@ -304,44 +305,47 @@ func (ro *Router) register(pattern string, handler RouteHandler, method string) 
 		panic("router: nil handler")
 	}
 
-	if ro.m == nil {
-		ro.m = make(map[string]*routerEntry)
-	}
-
-	e, ok := ro.m[pattern]
-	if ok {
-		if _, ok := e.mh[method]; ok {
+	if pattern == "/" {
+		if ro.e != nil {
 			panic("router: multiple registration into " + pattern)
 		}
-	} else {
-		e = &routerEntry{
+		ro.e = &routerEntry{
 			pattern: pattern,
 			re:      createRegExp(pattern),
 			mh:      make(map[string]RouteHandler),
 		}
+		return
 	}
 
-	e.mh[method] = handler
-
-	ro.m[pattern] = e
-
-	if pattern[len(pattern)-1] == '/' {
-		if ro.sm == nil {
-			ro.sm = make(map[string]*routerEntry)
-		}
-		ro.sm[e.pattern] = e
-	} else {
-		if ro.um == nil {
-			ro.um = make(map[string]*routerEntry)
-		}
-		ro.um[e.pattern] = e
-	}
-
+	var n *routerNamespace
 	if pattern[0] == '/' {
-		ro.namespace(pattern[1:])
+		n = ro.namespace(pattern[1:])
 	} else {
 		ro.host = true
-		ro.namespace(pattern)
+		n = ro.namespace(pattern)
+	}
+
+	var holdEntry **routerEntry
+	if pattern[len(pattern)-1] == '/' {
+		holdEntry = &n.es
+	} else {
+		holdEntry = &n.eu
+	}
+
+	if *holdEntry != nil {
+		entry := **holdEntry
+		if _, ok := entry.mh[method]; ok {
+			panic("router: multiple registration into " + pattern)
+		}
+		entry.mh[method] = handler
+	} else {
+		*holdEntry = &routerEntry{
+			pattern: pattern,
+			re:      createRegExp(pattern),
+			mh: map[string]RouteHandler{
+				method: handler,
+			},
+		}
 	}
 }
 
@@ -409,9 +413,10 @@ func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *R
 }
 
 type routerNamespace struct {
-	r  *Router
-	p  *routerNamespace // parent
-	ns map[string]*routerNamespace
+	r      *Router
+	p      *routerNamespace // parent
+	es, eu *routerEntry
+	ns     map[string]*routerNamespace
 }
 
 func (na *routerNamespace) namespace(name string) *routerNamespace {
@@ -471,15 +476,24 @@ func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, pa
 	subnames := strings.Split(name, "/")
 
 	var acc string
+	var before string
 	for _, name := range subnames {
+		before = acc
 		acc += name
-		if found, ok := ns[acc]; ok {
+		if found, ok := ns[acc]; ok { // Exact match
 			n = found
 			ns = n.ns // next level
 			path += acc + "/"
 			acc = ""
 		} else {
-			acc += "/"
+			if found, ok := ns[before+"{}"]; ok { // Has param that can handle with path
+				n = found
+				ns = n.ns // next level
+				path += acc + "{}/"
+				acc = ""
+			} else {
+				acc += "/"
+			}
 		}
 	}
 
@@ -505,6 +519,8 @@ const ErrParamAsNamespace = "the given namespace starts with param"
 //
 // Finally returning the parsed name.
 func parseNamespace(name string) string {
+	name = strings.TrimPrefix(name, "/")
+	name = strings.TrimSuffix(name, "/")
 	if regexp.MustCompile(`^\{[^\/]+\}`).MatchString(name) {
 		panic(ErrParamAsNamespace)
 	}
