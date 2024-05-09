@@ -296,15 +296,19 @@ func createRegExp(pattern string) *regexp.Regexp {
 	return regexp.MustCompile(str)
 }
 
-var patternValidator = regexp.MustCompile(`^((?:\w+\.)+\w+)?((?:\/(?:\w+|(?:\{\w+\}))+)*\/?)?$`)
+var PatternValidator = regexp.MustCompile(`^((?:\w+\.)+\w+)?((?:\/(?:\w+|(?:\{\w+\}))+)*(?:\/(?:\w*(?:\.\w+)*)?)?)?$`)
 
 func isValidPattern(p string) bool {
+
+	if PatternValidator == nil {
+		panic("router: nil pattern validator")
+	}
 
 	if p == "" {
 		return false
 	}
 
-	return !patternValidator.MatchString(p)
+	return !PatternValidator.MatchString(p)
 }
 
 func (ro *Router) register(pattern string, handler RouteHandler, method string) {
