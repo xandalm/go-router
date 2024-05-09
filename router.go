@@ -296,11 +296,22 @@ func createRegExp(pattern string) *regexp.Regexp {
 	return regexp.MustCompile(str)
 }
 
+var patternValidator = regexp.MustCompile(`^((?:\w+\.)+\w+)?((?:\/(?:\w+|(?:\{\w+\}))+)*\/?)?$`)
+
+func isValidPattern(p string) bool {
+
+	if p == "" {
+		return false
+	}
+
+	return !patternValidator.MatchString(p)
+}
+
 func (ro *Router) register(pattern string, handler RouteHandler, method string) {
 	ro.mu.Lock()
 	defer ro.mu.Unlock()
 
-	if pattern == "" {
+	if isValidPattern(pattern) {
 		panic("router: invalid pattern")
 	}
 

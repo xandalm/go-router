@@ -145,16 +145,29 @@ func TestRouter_namespace(t *testing.T) {
 
 func TestRouter_register(t *testing.T) {
 
-	t.Run("panic on empty pattern", func(t *testing.T) {
-		router := &Router{}
+	t.Run("panic on invalid pattern", func(t *testing.T) {
 
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Error("didn't panic")
-			}
-		}()
-		router.register("", dummyHandler, MethodAll)
+		cases := []string{
+			"",
+			"//",
+			"///",
+			"/path//",
+			"url//",
+		}
+
+		for _, pattern := range cases {
+			t.Run(fmt.Sprintf("for %q pattern", pattern), func(t *testing.T) {
+				router := &Router{}
+
+				defer func() {
+					r := recover()
+					if r == nil {
+						t.Error("didn't panic")
+					}
+				}()
+				router.register(pattern, dummyHandler, MethodAll)
+			})
+		}
 	})
 
 	t.Run("panic on nil handler", func(t *testing.T) {
