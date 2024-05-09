@@ -17,8 +17,6 @@ func (h *dummyRouteHandler) ServeHTTP(w ResponseWriter, r *Request) {
 }
 
 var dummyHandler = &dummyRouteHandler{}
-var dummyHandlerFunc = func(w ResponseWriter, r *Request) {
-}
 
 func TestRouter_namespace(t *testing.T) {
 	t.Run("create a namespace and return it", func(t *testing.T) {
@@ -842,14 +840,6 @@ func assertHandler(t testing.TB, got, want RouteHandler) {
 
 	if got != want {
 		t.Fatalf("got handler %v, but want %v", got, want)
-	}
-}
-
-func assertHandlerFunc(t testing.TB, got RouteHandlerFunc, want RouteHandlerFunc) {
-	t.Helper()
-
-	if !reflect.DeepEqual(reflect.ValueOf(got), reflect.ValueOf(want)) {
-		t.Errorf("got handler %#v, but want %#v", got, want)
 	}
 }
 
