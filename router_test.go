@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -16,21 +17,155 @@ func (h *dummyHandler) ServeHTTP(w ResponseWriter, r *Request) {
 }
 
 var vDummyHandler = &dummyHandler{}
-var vDummyHandlerFunc = func(w ResponseWriter, r *Request) {
-}
 
-func Test_register(t *testing.T) {
-
-	t.Run("panic on empty pattern", func(t *testing.T) {
+func TestRouter_namespace(t *testing.T) {
+	t.Run("create a namespace and return it", func(t *testing.T) {
 		router := &Router{}
 
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Error("didn't panic")
+		cases := []struct {
+			namespace, check string
+		}{
+			{"admin", "admin"},
+			{"api/v1", "api/v1"},
+			{"images/{img}", "images/{}"},
+			{"videos/{v}/frame/{f}", "videos/{}/frame/{}"},
+			{"path/{p1}/{p2}", "path/{}/{}"},
+		}
+
+		for _, c := range cases {
+			n := router.namespace(c.namespace)
+
+			assertRouterHasNamespace(t, router, c.check)
+			if n == nil {
+				t.Error("didn't get namespace")
 			}
-		}()
-		router.register("", vDummyHandler, MethodAll)
+		}
+	})
+	t.Run("panic if the given namespace starts with param", func(t *testing.T) {
+		router := &Router{}
+
+		cases := []string{
+			"{param}",
+			"{param}/abc",
+			"{param1}/{param2}",
+		}
+
+		for _, name := range cases {
+			t.Run("for namespace name "+name, func(t *testing.T) {
+				defer func() {
+					r := recover()
+					if r == nil || r != ErrParamAsNamespace {
+						t.Errorf("didn't get expected panic, got %v", r)
+					}
+				}()
+				router.namespace(name)
+			})
+		}
+	})
+	t.Run("create a namespace in a correspondent prefix namespace", func(t *testing.T) {
+		router := &Router{}
+
+		cases := []struct {
+			base        string
+			namespace   string
+			inRouter    string
+			inNamespace string
+		}{
+			{"admin", "admin/users", "admin", "users"},
+			{"customers/{}", "customers/{}/addresses", "customers/{}", "addresses"},
+		}
+
+		for _, c := range cases {
+			n := router.namespace(c.base)
+			router.namespace(c.namespace)
+			assertRouterHasNamespace(t, router, c.inRouter)
+			assertNamespaceHasNamespace(t, n, c.inNamespace)
+		}
+	})
+	t.Run("if the given name is a prefix of the an existent namespace then split", func(t *testing.T) {
+		r := &Router{}
+		r.namespace("api/v1/admin")
+
+		r.namespace("api")
+		if len(r.ns) != 1 {
+			t.Fatal("expected that the router has 1 namespace")
+		}
+		assertRouterHasNamespace(t, r, "api")
+		assertNamespaceHasNamespace(t, r.ns["api"], "v1/admin")
+
+		r.namespace("api/v1")
+		if len(r.ns) != 1 {
+			t.Fatal("expected that the router has 1 namespace")
+		}
+		assertRouterHasNamespace(t, r, "api")
+		apiNamespace := r.ns["api"]
+		assertNamespaceHasNamespace(t, apiNamespace, "v1")
+		v1Namespace := apiNamespace.ns["v1"]
+		assertNamespaceHasNamespace(t, v1Namespace, "admin")
+
+		r.namespace("customers/{}")
+
+		r.namespace("customers")
+		if len(r.ns) != 2 {
+			t.Fatal("expected that the router has 2 namespace")
+		}
+		assertRouterHasNamespace(t, r, "customers")
+		assertNamespaceHasNamespace(t, r.ns["customers"], "{}")
+	})
+	t.Run("do not duplicate or overwritten namespace", func(t *testing.T) {
+		r := &Router{}
+		r.namespace("api")
+		assertRouterHasNamespace(t, r, "api")
+		before := r.ns["api"]
+
+		r.namespace("api")
+		assertRouterHasNamespace(t, r, "api")
+		after := r.ns["api"]
+
+		if len(r.ns) > 1 {
+			t.Fatalf("namespace was duplicated, %v", r.ns)
+		}
+
+		if before != after {
+			t.Errorf("namespace was overwritten, want %p but got %p", before, after)
+		}
+
+		t.Run("return the same namespace", func(t *testing.T) {
+			got := r.namespace("api")
+			want := after
+
+			if got != want {
+				t.Errorf("got %p but want %p", got, want)
+			}
+		})
+	})
+}
+
+func TestRouter_register(t *testing.T) {
+
+	t.Run("panic on invalid pattern", func(t *testing.T) {
+
+		cases := []string{
+			"",
+			"//",
+			"///",
+			"/path//",
+			"url//",
+		}
+
+		for _, pattern := range cases {
+			t.Run(fmt.Sprintf("for %q pattern", pattern), func(t *testing.T) {
+				router := &Router{}
+
+				defer func() {
+					r := recover()
+					if r == nil {
+						t.Error("didn't panic")
+					}
+				}()
+				router.register(pattern, vDummyHandler, MethodAll)
+			})
+		}
 	})
 
 	t.Run("panic on nil handler", func(t *testing.T) {
@@ -60,6 +195,32 @@ func Test_register(t *testing.T) {
 		router.register("/path", vDummyHandler, MethodAll)
 	})
 
+	t.Run("create namespaces indirectly", func(t *testing.T) {
+		router := &Router{}
+
+		cases := []struct {
+			pattern   string
+			method    string
+			namespace string
+		}{
+			{"/use", MethodAll, "use"},
+			{"/get", MethodGet, "get"},
+			{"/put", MethodPut, "put"},
+			{"/post", MethodPost, "post"},
+			{"/delete", MethodDelete, "delete"},
+			{"/admin/products", MethodGet, "admin/products"},
+			{"/customers/{id}", MethodGet, "customers/{}"},
+		}
+
+		for _, c := range cases {
+			t.Run(fmt.Sprintf("registering %s method on %s", c.method, c.pattern), func(t *testing.T) {
+				router.register(c.pattern, vDummyHandler, c.method)
+
+				assertRouterHasNamespace(t, router, c.namespace)
+			})
+		}
+	})
+
 	userRE := regexp.MustCompile(`^\/users$`)
 
 	cases := []struct {
@@ -74,6 +235,7 @@ func Test_register(t *testing.T) {
 		{"/users", userRE, MethodPut},
 		{"/users", userRE, MethodDelete},
 		{"/users/{id}", regexp.MustCompile(`^\/users\/(?P<id>[^\/]+)$`), MethodGet},
+		{"/", regexp.MustCompile(`^\/?$`), MethodGet},
 	}
 
 	router := &Router{}
@@ -83,19 +245,12 @@ func Test_register(t *testing.T) {
 
 			router.register(c.pattern, vDummyHandler, c.method)
 
-			assertRegistered(t, router, c.pattern)
-
-			e := router.m[c.pattern]
-			assertHandler(t, e.mh[c.method], vDummyHandler)
-
-			if !reflect.DeepEqual(c.re, e.re) {
-				t.Errorf("got regexp %q, but want %q", e.re, c.re)
-			}
+			checkRegisteredEntry(t, router, c.pattern, c.re, c.method, vDummyHandler)
 		})
 	}
 }
 
-func Test_registerFunc(t *testing.T) {
+func TestRouter_registerFunc(t *testing.T) {
 
 	t.Run("panic on nil handler", func(t *testing.T) {
 		router := &Router{}
@@ -109,33 +264,9 @@ func Test_registerFunc(t *testing.T) {
 
 		router.registerFunc("/path", nil, MethodAll)
 	})
-
-	cases := []struct {
-		pattern string
-		method  string
-	}{
-		{"/users", MethodAll},
-		{"/users", MethodGet},
-		{"/users", MethodPost},
-		{"/users", MethodPut},
-		{"/users", MethodDelete},
-	}
-
-	router := &Router{}
-
-	for _, c := range cases {
-		t.Run(fmt.Sprintf(`add %q to %s`, c.pattern, c.method), func(t *testing.T) {
-
-			router.registerFunc(c.pattern, vDummyHandlerFunc, c.method)
-
-			assertRegistered(t, router, c.pattern)
-
-			checkHandlerFunc(t, router, c.pattern, c.method, vDummyHandlerFunc)
-		})
-	}
 }
 
-func TestHandler(t *testing.T) {
+func TestRouter_Handler(t *testing.T) {
 
 	cases := []struct {
 		pattern             string
@@ -235,6 +366,13 @@ func TestHandler(t *testing.T) {
 			"/api/v1/partners",
 			reflect.TypeOf(&redirectHandler{}),
 			nil,
+		},
+		{
+			"/",
+			newDummyURI(""),
+			"/",
+			reflect.TypeOf(vDummyHandler),
+			Params{},
 		},
 	}
 
@@ -343,7 +481,7 @@ type uriTest struct {
 	expectedBody   string
 }
 
-func TestUse(t *testing.T) {
+func TestRouter_Use(t *testing.T) {
 
 	cases := []routeCase{
 		{
@@ -390,10 +528,9 @@ func TestUse(t *testing.T) {
 			}
 		})
 	}
-
 }
 
-func TestGet(t *testing.T) {
+func TestRouter_Get(t *testing.T) {
 
 	t.Run(`router with only "/products" on GET`, func(t *testing.T) {
 		router := NewRouter()
@@ -420,7 +557,7 @@ func TestGet(t *testing.T) {
 	})
 }
 
-func TestPost(t *testing.T) {
+func TestRouter_Post(t *testing.T) {
 
 	t.Run(`router with only "/products" on POST`, func(t *testing.T) {
 		router := NewRouter()
@@ -447,7 +584,7 @@ func TestPost(t *testing.T) {
 	})
 }
 
-func TestPut(t *testing.T) {
+func TestRouter_Put(t *testing.T) {
 
 	t.Run(`router with only "/products" on PUT`, func(t *testing.T) {
 		router := NewRouter()
@@ -474,7 +611,7 @@ func TestPut(t *testing.T) {
 	})
 }
 
-func TestDelete(t *testing.T) {
+func TestRouter_Delete(t *testing.T) {
 
 	t.Run(`router with only "/products" on DELETE`, func(t *testing.T) {
 		router := NewRouter()
@@ -497,6 +634,87 @@ func TestDelete(t *testing.T) {
 
 				assertStatus(t, response, c.expectedStatus)
 			})
+		}
+	})
+}
+
+func TestRouter_Namespace(t *testing.T) {
+	t.Run("create a namespace and return it", func(t *testing.T) {
+		router := NewRouter()
+
+		nsAdmin := router.Namespace("admin")
+
+		assertRouterHasNamespace(t, router, "admin")
+		if nsAdmin == nil {
+			t.Error("didn't get namespace, got nil")
+		}
+	})
+}
+
+func TestRouterNamespace_Namespace(t *testing.T) {
+	t.Run("create namespace from a namespace", func(t *testing.T) {
+		n := &routerNamespace{
+			NewRouter(),
+			nil,
+			nil,
+			nil,
+			map[string]*routerNamespace{},
+		}
+
+		nn := n.Namespace("v1")
+
+		assertNamespaceHasNamespace(t, n, "v1")
+
+		got := n.ns["v1"]
+		if got != nn {
+			t.Fatalf("didn't get the namespace")
+		}
+
+		if got.r != n.r {
+			t.Fatalf("got namespace with router %p, but want router %p", got.r, n.r)
+		}
+
+		if got.p != n {
+			t.Fatalf("the namespace parent is not %p, got %p", n, got.p)
+		}
+
+		t.Run("return the previous created namespace", func(t *testing.T) {
+			got := n.Namespace("v1")
+
+			if got != nn {
+				t.Error("didn't get the previous namespace")
+			}
+		})
+		t.Run("if prefix already exists then create a sub-namespace", func(t *testing.T) {
+			n.Namespace("v1/admin/users")
+
+			if len(n.ns) > 1 {
+				t.Fatalf("there is more than one namespaces at namespace(%p), %v", n, n.ns)
+			}
+
+			assertNamespaceHasNamespace(t, n, "v1")
+			assertNamespaceHasNamespace(t, n.ns["v1"], "admin/users")
+		})
+		t.Run("split an existent namespace if the given name is its prefix", func(t *testing.T) {
+			n.Namespace("v1/admin")
+
+			assertNamespaceHasNamespace(t, n, "v1")
+			v1 := n.ns["v1"]
+			assertNamespaceHasNamespace(t, v1, "admin")
+			admin := v1.ns["admin"]
+			assertNamespaceHasNamespace(t, admin, "users")
+		})
+	})
+	t.Run("namespace is reachable from the router", func(t *testing.T) {
+		r := NewRouter()
+		api := r.Namespace("api")
+
+		v1 := api.Namespace("v1")
+
+		got := r.Namespace("api/v1")
+
+		if got != v1 {
+			t.Error("unable to reach namespace from the router")
 		}
 	})
 }
@@ -553,11 +771,67 @@ func BenchmarkRouterMath(b *testing.B) {
 	b.StopTimer()
 }
 
-func assertRegistered(t testing.TB, router *Router, path string) {
+func closestNamespace(router *Router, path string) (n *routerNamespace, p string) {
+	ns := router.ns
+
+	path = parseNamespace(path)
+	r := regexp.MustCompile(`\/[^\/]+$`)
+	var search string
+	for path != "" {
+		search = path
+		for search != "" {
+			if f, ok := ns[search]; ok {
+				path = strings.TrimPrefix(strings.TrimPrefix(path, search), "/")
+				ns = f.ns
+				n = f
+				break
+			}
+			if f, ok := ns["{}"]; ok {
+				path = strings.TrimPrefix(strings.TrimPrefix(path, search), "/")
+				ns = f.ns
+				n = f
+				break
+			}
+			search = r.ReplaceAllString(search, "")
+		}
+	}
+
+	return
+}
+
+func findRouterEntry(router *Router, path string) (unslashed *routerEntry, slashed *routerEntry) {
+	n, p := closestNamespace(router, path)
+
+	if n == nil || p != "" {
+		return nil, nil
+	}
+
+	return n.eu, n.es
+}
+
+func checkRegisteredEntry(t *testing.T, router *Router, pattern string, re *regexp.Regexp, method string, handler Handler) {
 	t.Helper()
 
-	if _, ok := router.m[path]; !ok {
-		t.Fatal("not registered the pattern")
+	eu, es := findRouterEntry(router, pattern)
+
+	var e *routerEntry
+	switch {
+	case eu == nil && es == nil:
+		e = router.e
+	case eu != nil:
+		e = eu
+	case es != nil:
+		e = es
+	}
+
+	if e == nil {
+		t.Fatal("didn't registered entry")
+	}
+
+	assertHandler(t, e.mh[method], handler)
+
+	if !reflect.DeepEqual(re, e.re) {
+		t.Errorf("got regexp %q, but want %q", e.re, re)
 	}
 }
 
@@ -565,23 +839,7 @@ func assertHandler(t testing.TB, got, want Handler) {
 	t.Helper()
 
 	if got != want {
-		t.Errorf("got handler %v, but want %v", got, want)
-	}
-}
-
-func checkHandlerFunc(t *testing.T, router *Router, pattern, method string, handler func(ResponseWriter, *Request)) {
-	t.Helper()
-
-	e := router.m[pattern]
-	got := e.mh[method].(HandlerFunc)
-	assertHandlerFunc(t, got, HandlerFunc(vDummyHandlerFunc))
-}
-
-func assertHandlerFunc(t testing.TB, got HandlerFunc, want HandlerFunc) {
-	t.Helper()
-
-	if !reflect.DeepEqual(reflect.ValueOf(got), reflect.ValueOf(want)) {
-		t.Errorf("got handler %#v, but want %#v", got, want)
+		t.Fatalf("got handler %v, but want %v", got, want)
 	}
 }
 
@@ -616,5 +874,21 @@ func assertParams(t testing.TB, got, want Params) {
 
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got params %#v, but want %#v", got, want)
+	}
+}
+
+func assertRouterHasNamespace(t testing.TB, r *Router, n string) {
+	t.Helper()
+
+	if _, ok := r.ns[n]; !ok {
+		t.Fatalf("there is no %q namespace in %v", n, r.ns)
+	}
+}
+
+func assertNamespaceHasNamespace(t testing.TB, rn *routerNamespace, n string) {
+	t.Helper()
+
+	if _, ok := rn.ns[n]; !ok {
+		t.Fatalf("there is no %q namespace in %v", n, rn.ns)
 	}
 }
