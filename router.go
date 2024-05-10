@@ -24,8 +24,10 @@ type Handler interface {
 	ServeHTTP(ResponseWriter, *Request)
 }
 
-type MiddlewareHandler interface {
-	ServeHTTP(ResponseWriter, *Request, func(any))
+type NextMiddlewareCaller func()
+
+type Middleware interface {
+	Intercept(ResponseWriter, *Request, NextMiddlewareCaller)
 }
 
 // An Adapter to allow the use of functions as HTTP handlers.
@@ -100,6 +102,7 @@ func stripHostPort(host string) string {
 type Router struct {
 	mu   sync.RWMutex
 	ns   map[string]*routerNamespace
+	mws  []Middleware
 	e    *routerEntry // handle with "/" (the root)
 	host bool
 }
@@ -382,14 +385,14 @@ func (ro *Router) registerFunc(pattern string, handler func(w ResponseWriter, r 
 }
 
 // Records the given pattern and handler to handle the corresponding path.
-// Use is a generic method correspondent
-func (ro *Router) UsePattern(pattern string, handler Handler) {
+// All is a generic method correspondent
+func (ro *Router) All(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodAll)
 }
 
 // Similar to Use method, but this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
-func (ro *Router) UsePatternFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
+func (ro *Router) AllFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, HandlerFunc(handler), MethodAll)
 }
 
@@ -607,4 +610,8 @@ func (ro *Router) Namespace(name string) *routerNamespace {
 	defer ro.mu.Unlock()
 
 	return ro.namespace(name)
+}
+
+func (ro *Router) Use(mw Middleware) {
+	ro.mws = append(ro.mws, mw)
 }

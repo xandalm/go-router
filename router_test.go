@@ -380,7 +380,7 @@ func TestRouter_Handler(t *testing.T) {
 		t.Run(fmt.Sprintf("when listen to %q and request %q", c.pattern, c.uri), func(t *testing.T) {
 			router := NewRouter()
 
-			router.UsePattern(c.pattern, vDummyHandler)
+			router.All(c.pattern, vDummyHandler)
 
 			request, _ := http.NewRequest(http.MethodGet, c.uri, nil)
 
@@ -409,8 +409,8 @@ func TestRouter_Handler(t *testing.T) {
 			},
 		}
 
-		router.UsePattern("/users/", handlerOne)
-		router.UsePattern("/users", handlerTwo)
+		router.All("/users/", handlerOne)
+		router.All("/users", handlerTwo)
 
 		cases := []struct {
 			path    string
@@ -481,7 +481,7 @@ type uriTest struct {
 	expectedBody   string
 }
 
-func TestRouter_Use(t *testing.T) {
+func TestRouter_All(t *testing.T) {
 
 	cases := []routeCase{
 		{
@@ -510,7 +510,7 @@ func TestRouter_Use(t *testing.T) {
 		t.Run(fmt.Sprintf("add %q pattern", c.path), func(t *testing.T) {
 			router := &Router{}
 
-			router.UsePattern(c.path, c.handler)
+			router.All(c.path, c.handler)
 
 			for _, tt := range c.tests {
 				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
@@ -719,6 +719,33 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 	})
 }
 
+type dummyMiddleware struct {
+}
+
+func (m *dummyMiddleware) Intercept(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+}
+
+var vDummyMiddleware = &dummyMiddleware{}
+
+func TestRouter_Use(t *testing.T) {
+	router := NewRouter()
+
+	t.Run("create middleware", func(t *testing.T) {
+		router.Use(vDummyMiddleware)
+
+		if len(router.mws) != 1 {
+			t.Fatal("didn't create middleware appropriately")
+		}
+
+		got := router.mws[0]
+		want := vDummyMiddleware
+
+		if got != want {
+			t.Errorf("got middleware %v, but want %v", got, want)
+		}
+	})
+}
+
 func TestRouter(t *testing.T) {
 
 	router := NewRouter()
@@ -744,20 +771,20 @@ func TestRouter(t *testing.T) {
 
 func BenchmarkRouterMath(b *testing.B) {
 	r := NewRouter()
-	r.UsePattern("/", vDummyHandler)
-	r.UsePattern("/index", vDummyHandler)
-	r.UsePattern("/home", vDummyHandler)
-	r.UsePattern("/about", vDummyHandler)
-	r.UsePattern("/contact", vDummyHandler)
-	r.UsePattern("/robots.txt", vDummyHandler)
-	r.UsePattern("/products/", vDummyHandler)
-	r.UsePattern("/products/{id}", vDummyHandler)
-	r.UsePattern("/products/{id}/image.jpg", vDummyHandler)
-	r.UsePattern("/admin", vDummyHandler)
-	r.UsePattern("/admin/products/", vDummyHandler)
-	r.UsePattern("/admin/products/create", vDummyHandler)
-	r.UsePattern("/admin/products/update", vDummyHandler)
-	r.UsePattern("/admin/products/delete", vDummyHandler)
+	r.All("/", vDummyHandler)
+	r.All("/index", vDummyHandler)
+	r.All("/home", vDummyHandler)
+	r.All("/about", vDummyHandler)
+	r.All("/contact", vDummyHandler)
+	r.All("/robots.txt", vDummyHandler)
+	r.All("/products/", vDummyHandler)
+	r.All("/products/{id}", vDummyHandler)
+	r.All("/products/{id}/image.jpg", vDummyHandler)
+	r.All("/admin", vDummyHandler)
+	r.All("/admin/products/", vDummyHandler)
+	r.All("/admin/products/create", vDummyHandler)
+	r.All("/admin/products/update", vDummyHandler)
+	r.All("/admin/products/delete", vDummyHandler)
 
 	paths := []string{"/", "/notfound", "/admin/", "/admin/foo", "/contact", "/products",
 		"/products/", "/products/3/image.jpg"}
