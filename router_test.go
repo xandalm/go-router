@@ -727,10 +727,19 @@ func (m *dummyMiddleware) Intercept(w ResponseWriter, r *Request, next NextMiddl
 
 var vDummyMiddleware = &dummyMiddleware{}
 
-func TestRouter_Use(t *testing.T) {
-	router := NewRouter()
+type spyMiddleware struct {
+	intercepted bool
+}
 
-	t.Run("create middleware", func(t *testing.T) {
+func (m *spyMiddleware) Intercept(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+	m.intercepted = true
+	next()
+}
+
+func TestRouter_Use(t *testing.T) {
+
+	t.Run("create middleware into router", func(t *testing.T) {
+		router := NewRouter()
 		router.Use(vDummyMiddleware)
 
 		if len(router.mws) != 1 {
@@ -742,6 +751,34 @@ func TestRouter_Use(t *testing.T) {
 
 		if got != want {
 			t.Errorf("got middleware %v, but want %v", got, want)
+		}
+	})
+
+	t.Run("router middleware can intercept requests", func(t *testing.T) {
+
+		cases := [][]*spyMiddleware{
+			{&spyMiddleware{}},
+			{&spyMiddleware{}, &spyMiddleware{}},
+			{&spyMiddleware{}, &spyMiddleware{}, &spyMiddleware{}},
+		}
+
+		for _, mws := range cases {
+			router := NewRouter()
+			t.Run(fmt.Sprintf("request intercepted by %d middlewares", len(mws)), func(t *testing.T) {
+				for _, mw := range mws {
+					router.Use(mw)
+				}
+
+				req, _ := http.NewRequest(http.MethodGet, newDummyURI(""), nil)
+
+				router.ServeHTTP(httptest.NewRecorder(), req)
+
+				for i, mw := range mws {
+					if !mw.intercepted {
+						t.Errorf("middleware %d didn't intercept request, got %t", i+1, mw.intercepted)
+					}
+				}
+			})
 		}
 	})
 }

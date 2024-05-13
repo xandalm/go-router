@@ -121,7 +121,27 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h, _, params := ro.Handler(r)
-	h.ServeHTTP(w, &Request{params: params, Request: r})
+	rr := &Request{params: params, Request: r}
+	ro.crossMiddlewares(w, rr)
+	h.ServeHTTP(w, rr)
+}
+
+func (ro *Router) crossMiddlewares(w ResponseWriter, r *Request) {
+	ch := make(chan int, 1)
+	i := 0
+	next := NextMiddlewareCaller(func() {
+		i++
+		ch <- i
+	})
+	ch <- i
+	for i < len(ro.mws) {
+		select {
+		case idx := <-ch:
+			ro.mws[idx].Intercept(w, r, next)
+		case <-r.Context().Done():
+			return
+		}
+	}
 }
 
 // Returns the handler for the given request accordingly to the request characteristics
