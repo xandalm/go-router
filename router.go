@@ -637,6 +637,15 @@ func (ro *Router) Namespace(name string) *routerNamespace {
 	return ro.namespace(name)
 }
 
-func (ro *Router) Use(mw Middleware) {
-	ro.mws = append(ro.mws, mw)
+func (ro *Router) Use(v any, mws ...Middleware) {
+
+	if pattern, ok := v.(string); ok {
+		n := ro.namespace(pattern)
+		n.mws = append(n.mws, mws...)
+	}
+
+	if mw, ok := v.(Middleware); ok {
+		partial := append([]Middleware{mw}, mws...)
+		ro.mws = append(ro.mws, partial...)
+	}
 }

@@ -720,13 +720,13 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 	})
 }
 
-type dummyMiddleware struct {
+type stubMiddleware struct {
 }
 
-func (m *dummyMiddleware) Intercept(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+func (m *stubMiddleware) Intercept(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
 }
 
-var vDummyMiddleware = &dummyMiddleware{}
+var dummyMiddleware = &stubMiddleware{}
 
 type spyMiddleware struct {
 	intercepted bool
@@ -741,14 +741,14 @@ func TestRouter_Use(t *testing.T) {
 
 	t.Run("create middleware into router", func(t *testing.T) {
 		router := NewRouter()
-		router.Use(vDummyMiddleware)
+		router.Use(dummyMiddleware)
 
 		if len(router.mws) != 1 {
 			t.Fatal("didn't create middleware appropriately")
 		}
 
 		got := router.mws[0]
-		want := vDummyMiddleware
+		want := dummyMiddleware
 
 		if got != want {
 			t.Errorf("got middleware %v, but want %v", got, want)
@@ -782,6 +782,37 @@ func TestRouter_Use(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("able to add many middleware in the same call", func(t *testing.T) {
+		r := NewRouter()
+		r.Use(dummyMiddleware, dummyMiddleware, dummyMiddleware)
+
+		if len(r.mws) != 3 {
+			t.Errorf("expected to get 3 middlewares, but got %d", len(r.mws))
+		}
+	})
+
+	t.Run("able to add middleware to a specific namespace accordingly to pattern/path", func(t *testing.T) {
+		r := NewRouter()
+
+		r.Use("/path", dummyMiddleware)
+
+		if len(r.mws) > 0 {
+			t.Fatal("expected no middleware in the router")
+		}
+
+		n := r.Namespace("path")
+
+		if len(n.mws) != 1 {
+			t.Fatalf("expected to get 1 middleware in the namespace, but get %d", len(n.mws))
+		}
+
+		got := n.mws[0].(*stubMiddleware)
+
+		if got != dummyMiddleware {
+			t.Errorf("got middleware %v, but want %v", got, dummyMiddleware)
+		}
+	})
 }
 
 func TestRouterNamespace_Use(t *testing.T) {
@@ -789,14 +820,14 @@ func TestRouterNamespace_Use(t *testing.T) {
 		r := NewRouter()
 		n := r.Namespace("api")
 
-		n.Use(vDummyMiddleware)
+		n.Use(dummyMiddleware)
 
 		if len(n.mws) != 1 {
 			t.Fatal("didn't create middleware appropriately")
 		}
 
 		got := n.mws[0]
-		want := vDummyMiddleware
+		want := dummyMiddleware
 
 		if got != want {
 			t.Errorf("got middleware %v, but want %v", got, want)
