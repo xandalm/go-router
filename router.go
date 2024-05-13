@@ -463,8 +463,9 @@ func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *R
 type routerNamespace struct {
 	r      *Router
 	p      *routerNamespace // parent
-	es, eu *routerEntry
 	ns     map[string]*routerNamespace
+	mws    []Middleware
+	es, eu *routerEntry
 }
 
 func (na *routerNamespace) namespace(name string) *routerNamespace {
@@ -518,6 +519,10 @@ func (na *routerNamespace) namespace(name string) *routerNamespace {
 func (na *routerNamespace) Namespace(name string) *routerNamespace {
 
 	return na.namespace(name)
+}
+
+func (na *routerNamespace) Use(mw Middleware) {
+	na.mws = append(na.mws, mw)
 }
 
 func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, path string) {

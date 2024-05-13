@@ -656,9 +656,10 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 		n := &routerNamespace{
 			NewRouter(),
 			nil,
-			nil,
-			nil,
 			map[string]*routerNamespace{},
+			nil,
+			nil,
+			nil,
 		}
 
 		nn := n.Namespace("v1")
@@ -779,6 +780,26 @@ func TestRouter_Use(t *testing.T) {
 					}
 				}
 			})
+		}
+	})
+}
+
+func TestRouterNamespace_Use(t *testing.T) {
+	t.Run("create middleware into namespace", func(t *testing.T) {
+		r := NewRouter()
+		n := r.Namespace("api")
+
+		n.Use(vDummyMiddleware)
+
+		if len(n.mws) != 1 {
+			t.Fatal("didn't create middleware appropriately")
+		}
+
+		got := n.mws[0]
+		want := vDummyMiddleware
+
+		if got != want {
+			t.Errorf("got middleware %v, but want %v", got, want)
 		}
 	})
 }
