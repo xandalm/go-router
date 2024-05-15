@@ -11,12 +11,7 @@ import (
 	"testing"
 )
 
-type dummyHandler struct{}
-
-func (h *dummyHandler) ServeHTTP(w ResponseWriter, r *Request) {
-}
-
-var vDummyHandler = &dummyHandler{}
+var dummyHandler = &stubHandler{}
 
 func TestRouter_namespace(t *testing.T) {
 	t.Run("create a namespace and return it", func(t *testing.T) {
@@ -163,7 +158,7 @@ func TestRouter_register(t *testing.T) {
 						t.Error("didn't panic")
 					}
 				}()
-				router.register(pattern, vDummyHandler, MethodAll)
+				router.register(pattern, dummyHandler, MethodAll)
 			})
 		}
 	})
@@ -191,8 +186,8 @@ func TestRouter_register(t *testing.T) {
 			}
 		}()
 
-		router.register("/path", vDummyHandler, MethodAll)
-		router.register("/path", vDummyHandler, MethodAll)
+		router.register("/path", dummyHandler, MethodAll)
+		router.register("/path", dummyHandler, MethodAll)
 	})
 
 	t.Run("create namespaces indirectly", func(t *testing.T) {
@@ -214,7 +209,7 @@ func TestRouter_register(t *testing.T) {
 
 		for _, c := range cases {
 			t.Run(fmt.Sprintf("registering %s method on %s", c.method, c.pattern), func(t *testing.T) {
-				router.register(c.pattern, vDummyHandler, c.method)
+				router.register(c.pattern, dummyHandler, c.method)
 
 				assertRouterHasNamespace(t, router, c.namespace)
 			})
@@ -243,9 +238,9 @@ func TestRouter_register(t *testing.T) {
 	for _, c := range cases {
 		t.Run(fmt.Sprintf(`add %q to %s`, c.pattern, c.method), func(t *testing.T) {
 
-			router.register(c.pattern, vDummyHandler, c.method)
+			router.register(c.pattern, dummyHandler, c.method)
 
-			checkRegisteredEntry(t, router, c.pattern, c.re, c.method, vDummyHandler)
+			checkRegisteredEntry(t, router, c.pattern, c.re, c.method, dummyHandler)
 		})
 	}
 }
@@ -279,14 +274,14 @@ func TestRouter_Handler(t *testing.T) {
 			"/path",
 			newDummyURI("/path"),
 			"/path",
-			reflect.TypeOf(vDummyHandler),
+			reflect.TypeOf(dummyHandler),
 			Params{},
 		},
 		{
 			"/users/{id}",
 			newDummyURI("/users/1"),
 			"/users/{id}",
-			reflect.TypeOf(vDummyHandler),
+			reflect.TypeOf(dummyHandler),
 			Params{
 				"id": "1",
 			},
@@ -295,7 +290,7 @@ func TestRouter_Handler(t *testing.T) {
 			"/users/{id}",
 			newDummyURI("/users/6dbd2"),
 			"/users/{id}",
-			reflect.TypeOf(vDummyHandler),
+			reflect.TypeOf(dummyHandler),
 			Params{
 				"id": "6dbd2",
 			},
@@ -304,7 +299,7 @@ func TestRouter_Handler(t *testing.T) {
 			"/users/{id}",
 			newDummyURI("/users/d033fdc6-dbd2-427c-b18c-a41aa6449d75"),
 			"/users/{id}",
-			reflect.TypeOf(vDummyHandler),
+			reflect.TypeOf(dummyHandler),
 			Params{
 				"id": "d033fdc6-dbd2-427c-b18c-a41aa6449d75",
 			},
@@ -313,7 +308,7 @@ func TestRouter_Handler(t *testing.T) {
 			"/users/{id}",
 			newDummyURI("/users/{id}"),
 			"/users/{id}",
-			reflect.TypeOf(vDummyHandler),
+			reflect.TypeOf(dummyHandler),
 			Params{
 				"id": "{id}",
 			},
@@ -329,14 +324,14 @@ func TestRouter_Handler(t *testing.T) {
 			"site.com/users",
 			"http://site.com/users",
 			"site.com/users",
-			reflect.TypeOf(vDummyHandler),
+			reflect.TypeOf(dummyHandler),
 			Params{},
 		},
 		{
 			"site.com/users",
 			"http://site.com:3000/users",
 			"site.com/users",
-			reflect.TypeOf(vDummyHandler),
+			reflect.TypeOf(dummyHandler),
 			Params{},
 		},
 		{
@@ -371,7 +366,7 @@ func TestRouter_Handler(t *testing.T) {
 			"/",
 			newDummyURI(""),
 			"/",
-			reflect.TypeOf(vDummyHandler),
+			reflect.TypeOf(dummyHandler),
 			Params{},
 		},
 	}
@@ -380,7 +375,7 @@ func TestRouter_Handler(t *testing.T) {
 		t.Run(fmt.Sprintf("when listen to %q and request %q", c.pattern, c.uri), func(t *testing.T) {
 			router := NewRouter()
 
-			router.All(c.pattern, vDummyHandler)
+			router.All(c.pattern, dummyHandler)
 
 			request, _ := http.NewRequest(http.MethodGet, c.uri, nil)
 
@@ -400,11 +395,11 @@ func TestRouter_Handler(t *testing.T) {
 	t.Run(`distinguish "/users" from "/users/" when both were added`, func(t *testing.T) {
 		router := NewRouter()
 
-		handlerOne := &MockRouterHandler{
+		handlerOne := &MockHandler{
 			OnHandleFunc: func(w ResponseWriter, r *Request) {
 			},
 		}
-		handlerTwo := &MockRouterHandler{
+		handlerTwo := &MockHandler{
 			OnHandleFunc: func(w ResponseWriter, r *Request) {
 			},
 		}
@@ -415,7 +410,7 @@ func TestRouter_Handler(t *testing.T) {
 		cases := []struct {
 			path    string
 			pattern string
-			handler *MockRouterHandler
+			handler *MockHandler
 			params  Params
 		}{
 			{
@@ -452,26 +447,6 @@ func TestRouter_Handler(t *testing.T) {
 	})
 }
 
-type MockRouterHandler struct {
-	lastParams   Params
-	OnHandleFunc func(ResponseWriter, *Request)
-}
-
-func (h *MockRouterHandler) ServeHTTP(w ResponseWriter, r *Request) {
-	h.lastParams = r.Params()
-	h.OnHandleFunc(w, r)
-}
-
-func newDummyURI(path string) string {
-	return "http://site.com" + path
-}
-
-type routeCase struct {
-	path    string
-	handler *MockRouterHandler
-	tests   []uriTest
-}
-
 type uriTest struct {
 	uri            string
 	method         string
@@ -483,10 +458,16 @@ type uriTest struct {
 
 func TestRouter_All(t *testing.T) {
 
+	type routeCase struct {
+		path    string
+		handler *MockHandler
+		tests   []uriTest
+	}
+
 	cases := []routeCase{
 		{
 			path: "/users",
-			handler: &MockRouterHandler{
+			handler: &MockHandler{
 				OnHandleFunc: func(w ResponseWriter, r *Request) {
 				},
 			},
@@ -496,7 +477,7 @@ func TestRouter_All(t *testing.T) {
 		},
 		{
 			path: "/users/{id}",
-			handler: &MockRouterHandler{
+			handler: &MockHandler{
 				OnHandleFunc: func(w ResponseWriter, r *Request) {
 				},
 			},
@@ -535,7 +516,7 @@ func TestRouter_Get(t *testing.T) {
 	t.Run(`router with only "/products" on GET`, func(t *testing.T) {
 		router := NewRouter()
 
-		router.Get("/products", vDummyHandler)
+		router.Get("/products", dummyHandler)
 
 		cases := []uriTest{
 			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusOK, ""},
@@ -562,7 +543,7 @@ func TestRouter_Post(t *testing.T) {
 	t.Run(`router with only "/products" on POST`, func(t *testing.T) {
 		router := NewRouter()
 
-		router.Post("/products", vDummyHandler)
+		router.Post("/products", dummyHandler)
 
 		cases := []uriTest{
 			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusOK, ""},
@@ -589,7 +570,7 @@ func TestRouter_Put(t *testing.T) {
 	t.Run(`router with only "/products" on PUT`, func(t *testing.T) {
 		router := NewRouter()
 
-		router.Put("/products", vDummyHandler)
+		router.Put("/products", dummyHandler)
 
 		cases := []uriTest{
 			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusOK, ""},
@@ -616,7 +597,7 @@ func TestRouter_Delete(t *testing.T) {
 	t.Run(`router with only "/products" on DELETE`, func(t *testing.T) {
 		router := NewRouter()
 
-		router.Delete("/products", vDummyHandler)
+		router.Delete("/products", dummyHandler)
 
 		cases := []uriTest{
 			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusOK, ""},
@@ -720,22 +701,7 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 	})
 }
 
-type stubMiddleware struct {
-}
-
-func (m *stubMiddleware) Intercept(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
-}
-
 var dummyMiddleware = &stubMiddleware{}
-
-type spyMiddleware struct {
-	intercepted bool
-}
-
-func (m *spyMiddleware) Intercept(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
-	m.intercepted = true
-	next()
-}
 
 func TestRouter_Use(t *testing.T) {
 
@@ -849,42 +815,73 @@ func TestRouterNamespace_Use(t *testing.T) {
 func TestRouter(t *testing.T) {
 
 	router := NewRouter()
+	router.Get("/greet", &MockHandler{
+		OnHandleFunc: func(w ResponseWriter, r *Request) {
+			fmt.Fprint(w, `Hello, Requester`)
+		},
+	})
+	router.Use("/admin", &mockMiddleware{
+		InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+			if _, ok := r.Header["Authorization"]; !ok {
+				panic("missing Authorization header")
+			}
+			next()
+		},
+	})
+	router.Get("/admin/users", &MockHandler{
+		OnHandleFunc: func(w ResponseWriter, r *Request) {
+			fmt.Fprint(w, `[]`)
+		},
+	})
 
-	t.Run(`handle to GET "/admin/users" after add "/admin/users" on GET`, func(t *testing.T) {
-		handler := &MockRouterHandler{
-			OnHandleFunc: func(w ResponseWriter, r *Request) {
-				fmt.Fprint(w, `[]`)
-			},
-		}
-		router.Get("/admin/users", handler)
-
-		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/admin/users"), nil)
+	t.Run(`handle to GET "/greet" after add "/greet" on GET`, func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/greet"), nil)
 		response := httptest.NewRecorder()
 
 		router.ServeHTTP(response, request)
 
 		assertStatus(t, response, http.StatusOK)
-		assertParams(t, handler.lastParams, Params{})
-		assertBody(t, response, `[]`)
+		assertBody(t, response, `Hello, Requester`)
 	})
+
+	t.Run("pass throught middleware test at /admin and return status 200", func(t *testing.T) {
+
+		req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
+		req.Header.Add("Authorization", "[Auth Token]")
+		res := httptest.NewRecorder()
+
+		router.ServeHTTP(res, req)
+
+		assertStatus(t, res, http.StatusOK)
+	})
+
+	// t.Run("the middleware at /admin must interrupt the request and return status 401", func(t *testing.T) {
+
+	// 	req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
+	// 	res := httptest.NewRecorder()
+
+	// 	router.ServeHTTP(res, req)
+
+	// 	assertStatus(t, res, http.StatusUnauthorized)
+	// })
 }
 
 func BenchmarkRouterMath(b *testing.B) {
 	r := NewRouter()
-	r.All("/", vDummyHandler)
-	r.All("/index", vDummyHandler)
-	r.All("/home", vDummyHandler)
-	r.All("/about", vDummyHandler)
-	r.All("/contact", vDummyHandler)
-	r.All("/robots.txt", vDummyHandler)
-	r.All("/products/", vDummyHandler)
-	r.All("/products/{id}", vDummyHandler)
-	r.All("/products/{id}/image.jpg", vDummyHandler)
-	r.All("/admin", vDummyHandler)
-	r.All("/admin/products/", vDummyHandler)
-	r.All("/admin/products/create", vDummyHandler)
-	r.All("/admin/products/update", vDummyHandler)
-	r.All("/admin/products/delete", vDummyHandler)
+	r.All("/", dummyHandler)
+	r.All("/index", dummyHandler)
+	r.All("/home", dummyHandler)
+	r.All("/about", dummyHandler)
+	r.All("/contact", dummyHandler)
+	r.All("/robots.txt", dummyHandler)
+	r.All("/products/", dummyHandler)
+	r.All("/products/{id}", dummyHandler)
+	r.All("/products/{id}/image.jpg", dummyHandler)
+	r.All("/admin", dummyHandler)
+	r.All("/admin/products/", dummyHandler)
+	r.All("/admin/products/create", dummyHandler)
+	r.All("/admin/products/update", dummyHandler)
+	r.All("/admin/products/delete", dummyHandler)
 
 	paths := []string{"/", "/notfound", "/admin/", "/admin/foo", "/contact", "/products",
 		"/products/", "/products/3/image.jpg"}
@@ -959,63 +956,5 @@ func checkRegisteredEntry(t *testing.T, router *Router, pattern string, re *rege
 
 	if !reflect.DeepEqual(re, e.re) {
 		t.Errorf("got regexp %q, but want %q", e.re, re)
-	}
-}
-
-func assertHandler(t testing.TB, got, want Handler) {
-	t.Helper()
-
-	if got != want {
-		t.Fatalf("got handler %v, but want %v", got, want)
-	}
-}
-
-func assertStatus(t testing.TB, response *httptest.ResponseRecorder, status int) {
-	t.Helper()
-
-	if response.Code != status {
-		t.Errorf("got status %d, but want %d", response.Code, status)
-	}
-}
-
-func assertBody(t testing.TB, response *httptest.ResponseRecorder, want string) {
-	t.Helper()
-
-	got := response.Body.String()
-	if got != want {
-		t.Errorf("got body %q, but want %q", got, want)
-	}
-}
-
-func assertHandlerType(t testing.TB, want reflect.Type, got Handler) {
-	t.Helper()
-
-	tp := reflect.TypeOf(got)
-	if tp != want {
-		t.Errorf("got handler type %v, but want %v", tp, want)
-	}
-}
-
-func assertParams(t testing.TB, got, want Params) {
-	t.Helper()
-
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got params %#v, but want %#v", got, want)
-	}
-}
-
-func assertRouterHasNamespace(t testing.TB, r *Router, n string) {
-	t.Helper()
-
-	if _, ok := r.ns[n]; !ok {
-		t.Fatalf("there is no %q namespace in %v", n, r.ns)
-	}
-}
-
-func assertNamespaceHasNamespace(t testing.TB, rn *routerNamespace, n string) {
-	t.Helper()
-
-	if _, ok := rn.ns[n]; !ok {
-		t.Fatalf("there is no %q namespace in %v", n, rn.ns)
 	}
 }
