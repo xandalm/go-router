@@ -44,6 +44,14 @@ func (m *mockMiddleware) Intercept(w ResponseWriter, r *Request, next NextMiddle
 	m.InterceptFunc(w, r, next)
 }
 
+type spyMiddlewareErrorHandler struct {
+	calls int
+}
+
+func (meh *spyMiddlewareErrorHandler) Handle(w ResponseWriter, r *Request, e error) {
+	meh.calls++
+}
+
 func newDummyURI(path string) string {
 	return "http://site.com" + path
 }

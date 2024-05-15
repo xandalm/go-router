@@ -32,6 +32,10 @@ type Middleware interface {
 	Intercept(ResponseWriter, *Request, NextMiddlewareCaller)
 }
 
+type MiddlewareErrorHandler interface {
+	Handle(ResponseWriter, *Request, error)
+}
+
 // An Adapter to allow the use of functions as HTTP handlers.
 type HandlerFunc func(ResponseWriter, *Request)
 
@@ -201,6 +205,7 @@ type Router struct {
 	mu   sync.RWMutex
 	ns   map[string]*routerNamespace
 	mws  []Middleware
+	meh  MiddlewareErrorHandler
 	e    *routerEntry // handle with "/" (the root)
 	host bool
 }
@@ -223,6 +228,9 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h, _, params := ro.Handler(r)
 	rr := &Request{params: params, Request: r}
 	if err := ro.crossMiddlewares(w, rr); err != nil {
+		if ro.meh != nil {
+			ro.meh.Handle(w, rr, err)
+		}
 		return
 	}
 	h.ServeHTTP(w, rr)
@@ -611,18 +619,38 @@ func (ro *Router) Namespace(name string) *routerNamespace {
 //
 //	router.Use("/path", middleware) // router.Use("/path", middleware1, middleware2,...)
 func (ro *Router) Use(v any, mws ...Middleware) {
+
+	switch got := v.(type) {
+	case MiddlewareErrorHandler:
+		ro.addMiddlewareErrorHandler(got)
+	case string:
+		ro.addMiddlewareOnPath(got, mws...)
+	case Middleware:
+		mws = append([]Middleware{got}, mws...)
+		ro.addMiddlewareOnRouter(mws...)
+	}
+}
+
+func (ro *Router) addMiddlewareOnRouter(mws ...Middleware) {
 	ro.mu.Lock()
 	defer ro.mu.Unlock()
 
-	if pattern, ok := v.(string); ok {
-		n := ro.namespace(pattern)
-		n.mws = append(n.mws, mws...)
-	}
+	ro.mws = append(ro.mws, mws...)
+}
 
-	if mw, ok := v.(Middleware); ok {
-		partial := append([]Middleware{mw}, mws...)
-		ro.mws = append(ro.mws, partial...)
-	}
+func (ro *Router) addMiddlewareOnPath(path string, mws ...Middleware) {
+	ro.mu.Lock()
+	defer ro.mu.Unlock()
+
+	n := ro.namespace(path)
+	n.mws = append(n.mws, mws...)
+}
+
+func (ro *Router) addMiddlewareErrorHandler(meh MiddlewareErrorHandler) {
+	ro.mu.Lock()
+	defer ro.mu.Unlock()
+
+	ro.meh = meh
 }
 
 type routerNamespace struct {

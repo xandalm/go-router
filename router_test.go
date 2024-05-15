@@ -703,6 +703,7 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 }
 
 var dummyMiddleware = &stubMiddleware{}
+var errFoo = errors.New("foo")
 
 func TestRouter_Use(t *testing.T) {
 
@@ -757,7 +758,7 @@ func TestRouter_Use(t *testing.T) {
 
 		router.Use(&mockMiddleware{
 			InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
-				next(errors.New("some error"))
+				next(errFoo)
 			},
 		})
 		router.All("/", &mockHandler{
@@ -804,6 +805,36 @@ func TestRouter_Use(t *testing.T) {
 		if got != dummyMiddleware {
 			t.Errorf("got middleware %v, but want %v", got, dummyMiddleware)
 		}
+	})
+
+	t.Run("create a middleware error handler", func(t *testing.T) {
+		r := NewRouter()
+
+		m := &spyMiddlewareErrorHandler{}
+		r.Use(m)
+
+		got := r.meh
+
+		if got != m {
+			t.Errorf("got middleware error handler %v, but want %v", got, m)
+		}
+
+		t.Run("can handle error caused by middleware", func(t *testing.T) {
+
+			r.Use(&mockMiddleware{
+				InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+					next(errFoo)
+				},
+			})
+
+			req, _ := http.NewRequest(http.MethodGet, newDummyURI(""), nil)
+
+			r.ServeHTTP(httptest.NewRecorder(), req)
+
+			if m.calls != 1 {
+				t.Errorf("didn't handle with middleware error properly")
+			}
+		})
 	})
 }
 
