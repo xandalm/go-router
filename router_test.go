@@ -766,6 +766,10 @@ func TestRouter_Use(t *testing.T) {
 			},
 		})
 
+		req, _ := http.NewRequest(http.MethodGet, newDummyURI(""), nil)
+
+		router.ServeHTTP(httptest.NewRecorder(), req)
+
 		if justReachTheHandler {
 			t.Error("didn't interrupted the request")
 		}
