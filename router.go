@@ -18,6 +18,8 @@ const (
 	MethodDelete = http.MethodDelete
 )
 
+const ErrNamespaceStartsWithParam = "the given namespace starts with param"
+
 type ResponseWriter http.ResponseWriter
 
 type Handler interface {
@@ -93,6 +95,102 @@ func stripHostPort(host string) string {
 	return host
 }
 
+func createRegExp(pattern string) *regexp.Regexp {
+
+	builder := strings.Builder{}
+
+	builder.WriteRune('^')
+
+	paramsSeeker := regexp.MustCompile(`(\/\{[^\/]+\})`)
+	builder.WriteString(paramsSeeker.ReplaceAllStringFunc(pattern, func(m string) string {
+		return "/(?P<" + m[2:len(m)-1] + ">[^/]+)"
+	}))
+
+	builder.WriteString("$")
+
+	str := regexp.MustCompile(`\/|\.`).ReplaceAllStringFunc(
+		builder.String(),
+		func(s string) string {
+			if s == "/" {
+				return `\/`
+			}
+			return `\.`
+		},
+	)
+
+	return regexp.MustCompile(str)
+}
+
+var PatternValidator = regexp.MustCompile(`^((?:\w+\.)+\w+)?((?:\/(?:\w+|(?:\{\w+\}))+)*(?:\/(?:\w*(?:\.\w+)*)?)?)?$`)
+
+func isValidPattern(p string) bool {
+
+	if PatternValidator == nil {
+		panic("router: nil pattern validator")
+	}
+
+	if p == "" {
+		return false
+	}
+
+	return !PatternValidator.MatchString(p)
+}
+
+func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, path string) {
+	subnames := strings.Split(name, "/")
+
+	var acc string
+	var before string
+	for _, name := range subnames {
+		before = acc
+		acc += name
+		if found, ok := ns[acc]; ok { // Exact match
+			n = found
+			ns = n.ns // next level
+			path += acc + "/"
+			acc = ""
+		} else {
+			if found, ok := ns[before+"{}"]; ok { // Has param that can handle with path
+				n = found
+				ns = n.ns // next level
+				path += acc + "{}/"
+				acc = ""
+			} else {
+				acc += "/"
+			}
+		}
+	}
+
+	if path != "" && path != name {
+		path = path[:len(path)-1]
+	}
+
+	return
+}
+
+// This function trims extremities slashes(/) from the namespace,
+// then checks if the namespace starts with a param. If it
+// happens then it will panic.
+// Otherwise will replace params into generalized params
+// As example, the path:
+//
+//	"/some/path/{PARAM_NAME}"
+//
+// Will be normalized to:
+//
+//	"/some/path/{}"
+//
+// Finally returns the parsed name.
+func parseNamespace(name string) string {
+	name = strings.TrimPrefix(name, "/")
+	name = strings.TrimSuffix(name, "/")
+	if regexp.MustCompile(`^\{[^\/]+\}`).MatchString(name) {
+		panic(ErrNamespaceStartsWithParam)
+	}
+	name = regexp.MustCompile(`\{[^\/]+\}`).ReplaceAllString(name, "{}")
+	return name
+}
+
 // Like to standard ServeMux, it's a HTTP request multiplexer.
 // Have similar characteristics, however Router brings the
 // possibility to handle params that can be exposed in patterns.
@@ -108,7 +206,9 @@ type Router struct {
 }
 
 func NewRouter() *Router {
-	return &Router{}
+	return &Router{
+		ns: map[string]*routerNamespace{},
+	}
 }
 
 // Dispatches the request to the handler whose pattern most closely matches the request URL.
@@ -297,47 +397,6 @@ func (ro *Router) match(path string) *routerEntry {
 	return nil
 }
 
-func createRegExp(pattern string) *regexp.Regexp {
-
-	builder := strings.Builder{}
-
-	builder.WriteRune('^')
-
-	paramsSeeker := regexp.MustCompile(`(\/\{[^\/]+\})`)
-	builder.WriteString(paramsSeeker.ReplaceAllStringFunc(pattern, func(m string) string {
-		return "/(?P<" + m[2:len(m)-1] + ">[^/]+)"
-	}))
-
-	builder.WriteString("$")
-
-	str := regexp.MustCompile(`\/|\.`).ReplaceAllStringFunc(
-		builder.String(),
-		func(s string) string {
-			if s == "/" {
-				return `\/`
-			}
-			return `\.`
-		},
-	)
-
-	return regexp.MustCompile(str)
-}
-
-var PatternValidator = regexp.MustCompile(`^((?:\w+\.)+\w+)?((?:\/(?:\w+|(?:\{\w+\}))+)*(?:\/(?:\w*(?:\.\w+)*)?)?)?$`)
-
-func isValidPattern(p string) bool {
-
-	if PatternValidator == nil {
-		panic("router: nil pattern validator")
-	}
-
-	if p == "" {
-		return false
-	}
-
-	return !PatternValidator.MatchString(p)
-}
-
 func (ro *Router) register(pattern string, handler Handler, method string) {
 	ro.mu.Lock()
 	defer ro.mu.Unlock()
@@ -410,7 +469,7 @@ func (ro *Router) All(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodAll)
 }
 
-// Similar to Use method, but this method get a handler as a func.
+// Similar to All method, but this method get a handler as a func.
 // And wrap it, to act like a RouteHandler.
 func (ro *Router) AllFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, HandlerFunc(handler), MethodAll)
@@ -458,6 +517,101 @@ func (ro *Router) Delete(pattern string, handler Handler) {
 // And wrap it, to act like a RouteHandler.
 func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodDelete)
+}
+
+func (ro *Router) namespace(name string) *routerNamespace {
+
+	name = parseNamespace(name)
+
+	if ro.ns == nil {
+		ro.ns = map[string]*routerNamespace{}
+	}
+
+	n, path := closer(ro.ns, name)
+
+	if path == name {
+		return n
+	}
+	name = strings.TrimPrefix(name, path+"/")
+
+	// new node (nn)
+	nn := &routerNamespace{
+		r:  ro,
+		ns: map[string]*routerNamespace{},
+	}
+
+	var ns map[string]*routerNamespace
+	if n == nil {
+		// hold router children (namespace list from this level)
+		ns = ro.ns
+	} else {
+		// hold falling node children (namespace list from this level)
+		ns = n.ns
+		// set falling node parent to be parent of the new node
+		nn.p = n.p
+		// set new node as parent of the falling node
+		n.p = nn
+	}
+
+	for k, v := range ns {
+		last := strings.TrimPrefix(k, name+"/")
+		if last == k {
+			continue
+		}
+		delete(ns, k)
+		v.p = nn
+		nn.ns[last] = v
+	}
+
+	ns[name] = nn
+
+	return nn
+}
+
+// Creates or find an existent namespace from the router.
+// The given name can be created with a single name:
+//
+//	"api"
+//
+// Or a compound name (names separated by slashes):
+//
+//	"api/v1/media"
+//
+// A param name is allowed if it's not the prefix of the given value.
+// The param will be transformed into generic param (closed brackets - {})
+//
+// Finally, returns the created namespace.
+func (ro *Router) Namespace(name string) *routerNamespace {
+	ro.mu.Lock()
+	defer ro.mu.Unlock()
+
+	return ro.namespace(name)
+}
+
+// Register one or more middlewares to intercept requests.
+// These middleware can be registered in the router itself,
+// or in the given path (namespace).
+//
+// To register middleware in the router, just:
+//
+//	router.Use(middleware) // router.Use(middleware1, middleware2,...) for 2+ middlewares
+//
+// To register middleware into path:
+//
+//	router.Use("/path", middleware) // router.Use("/path", middleware1, middleware2,...)
+func (ro *Router) Use(v any, mws ...Middleware) {
+	ro.mu.Lock()
+	defer ro.mu.Unlock()
+
+	if pattern, ok := v.(string); ok {
+		n := ro.namespace(pattern)
+		n.mws = append(n.mws, mws...)
+	}
+
+	if mw, ok := v.(Middleware); ok {
+		partial := append([]Middleware{mw}, mws...)
+		ro.mws = append(ro.mws, partial...)
+	}
 }
 
 type routerNamespace struct {
@@ -516,136 +670,33 @@ func (na *routerNamespace) namespace(name string) *routerNamespace {
 	return nn
 }
 
+// Creates or find an existent namespace from the namespace.
+// The given name can be created with a single name:
+//
+//	"api"
+//
+// Or a compound name (names separated by slashes):
+//
+//	"api/v1/media"
+//
+// A param name is allowed if it's not the prefix of the given value.
+// The param will be transformed into generic param (closed brackets - {})
+//
+// Finally, returns the created namespace.
 func (na *routerNamespace) Namespace(name string) *routerNamespace {
+	r := na.r
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	return na.namespace(name)
 }
 
+// Register one or more middlewares to intercept requests.
+// These middlewares will be registered in the namespace.
 func (na *routerNamespace) Use(mw Middleware) {
+	r := na.r
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	na.mws = append(na.mws, mw)
-}
-
-func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, path string) {
-	subnames := strings.Split(name, "/")
-
-	var acc string
-	var before string
-	for _, name := range subnames {
-		before = acc
-		acc += name
-		if found, ok := ns[acc]; ok { // Exact match
-			n = found
-			ns = n.ns // next level
-			path += acc + "/"
-			acc = ""
-		} else {
-			if found, ok := ns[before+"{}"]; ok { // Has param that can handle with path
-				n = found
-				ns = n.ns // next level
-				path += acc + "{}/"
-				acc = ""
-			} else {
-				acc += "/"
-			}
-		}
-	}
-
-	if path != "" && path != name {
-		path = path[:len(path)-1]
-	}
-
-	return
-}
-
-const ErrParamAsNamespace = "the given namespace starts with param"
-
-// This function checks for isolated param as namespace ocurrence.
-// If it happens then it will panic.
-// Otherwise will replace params into generalized params
-// As example, the path:
-//
-//	"/some/path/{PARAM_NAME}"
-//
-// Will be normalized to:
-//
-//	"/some/path/{any}"
-//
-// Finally returning the parsed name.
-func parseNamespace(name string) string {
-	name = strings.TrimPrefix(name, "/")
-	name = strings.TrimSuffix(name, "/")
-	if regexp.MustCompile(`^\{[^\/]+\}`).MatchString(name) {
-		panic(ErrParamAsNamespace)
-	}
-	name = regexp.MustCompile(`\{[^\/]+\}`).ReplaceAllString(name, "{}")
-	return name
-}
-
-func (ro *Router) namespace(name string) *routerNamespace {
-
-	name = parseNamespace(name)
-
-	if ro.ns == nil {
-		ro.ns = map[string]*routerNamespace{}
-	}
-
-	n, path := closer(ro.ns, name)
-
-	if path == name {
-		return n
-	}
-	name = strings.TrimPrefix(name, path+"/")
-
-	// new node (nn)
-	nn := &routerNamespace{
-		r:  ro,
-		ns: map[string]*routerNamespace{},
-	}
-
-	var ns map[string]*routerNamespace
-	if n == nil {
-		// hold router children (namespace list from this level)
-		ns = ro.ns
-	} else {
-		// hold falling node children (namespace list from this level)
-		ns = n.ns
-		// set falling node parent to be parent of the new node
-		nn.p = n.p
-		// set new node as parent of the falling node
-		n.p = nn
-	}
-
-	for k, v := range ns {
-		last := strings.TrimPrefix(k, name+"/")
-		if last == k {
-			continue
-		}
-		delete(ns, k)
-		v.p = nn
-		nn.ns[last] = v
-	}
-
-	ns[name] = nn // ignoring slash
-
-	return nn
-}
-
-func (ro *Router) Namespace(name string) *routerNamespace {
-	ro.mu.Lock()
-	defer ro.mu.Unlock()
-
-	return ro.namespace(name)
-}
-
-func (ro *Router) Use(v any, mws ...Middleware) {
-
-	if pattern, ok := v.(string); ok {
-		n := ro.namespace(pattern)
-		n.mws = append(n.mws, mws...)
-	}
-
-	if mw, ok := v.(Middleware); ok {
-		partial := append([]Middleware{mw}, mws...)
-		ro.mws = append(ro.mws, partial...)
-	}
 }

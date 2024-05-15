@@ -54,7 +54,7 @@ func TestRouter_namespace(t *testing.T) {
 			t.Run("for namespace name "+name, func(t *testing.T) {
 				defer func() {
 					r := recover()
-					if r == nil || r != ErrParamAsNamespace {
+					if r == nil || r != ErrNamespaceStartsWithParam {
 						t.Errorf("didn't get expected panic, got %v", r)
 					}
 				}()
