@@ -693,10 +693,10 @@ func (na *routerNamespace) Namespace(name string) *routerNamespace {
 
 // Register one or more middlewares to intercept requests.
 // These middlewares will be registered in the namespace.
-func (na *routerNamespace) Use(mw Middleware) {
+func (na *routerNamespace) Use(mw ...Middleware) {
 	r := na.r
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	na.mws = append(na.mws, mw)
+	na.mws = append(na.mws, mw...)
 }

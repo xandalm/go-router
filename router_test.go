@@ -833,6 +833,17 @@ func TestRouterNamespace_Use(t *testing.T) {
 			t.Errorf("got middleware %v, but want %v", got, want)
 		}
 	})
+
+	t.Run("able to add many middleware in the same call", func(t *testing.T) {
+		r := NewRouter()
+		n := r.Namespace("api")
+		n.Use(dummyMiddleware, dummyMiddleware, dummyMiddleware)
+
+		if len(n.mws) != 3 {
+			t.Errorf("expected to get 3 middlewares, but got %d", len(n.mws))
+		}
+	})
+
 }
 
 func TestRouter(t *testing.T) {
