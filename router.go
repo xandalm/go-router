@@ -26,7 +26,7 @@ type Handler interface {
 	ServeHTTP(ResponseWriter, *Request)
 }
 
-type NextMiddlewareCaller func()
+type NextMiddlewareCaller func(...error)
 
 type Middleware interface {
 	Intercept(ResponseWriter, *Request, NextMiddlewareCaller)
@@ -222,24 +222,35 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h, _, params := ro.Handler(r)
 	rr := &Request{params: params, Request: r}
-	ro.crossMiddlewares(w, rr)
+	if err := ro.crossMiddlewares(w, rr); err != nil {
+		return
+	}
 	h.ServeHTTP(w, rr)
 }
 
-func (ro *Router) crossMiddlewares(w ResponseWriter, r *Request) {
+func (ro *Router) crossMiddlewares(w ResponseWriter, r *Request) error {
 	ch := make(chan int, 1)
-	i := 0
-	next := NextMiddlewareCaller(func() {
-		i++
-		ch <- i
-	})
-	ch <- i
-	for i < len(ro.mws) {
+	chErr := make(chan error, 1)
+
+	size := len(ro.mws)
+	ch <- 0
+	for {
 		select {
 		case idx := <-ch:
-			ro.mws[idx].Intercept(w, r, next)
+			if idx >= size {
+				return nil
+			}
+			ro.mws[idx].Intercept(w, r, NextMiddlewareCaller(func(e ...error) {
+				if len(e) > 0 {
+					chErr <- e[0]
+					return
+				}
+				ch <- (idx + 1)
+			}))
+		case err := <-chErr:
+			return err
 		case <-r.Context().Done():
-			return
+			return nil
 		}
 	}
 }

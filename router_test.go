@@ -1,6 +1,7 @@
 package router
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -395,11 +396,11 @@ func TestRouter_Handler(t *testing.T) {
 	t.Run(`distinguish "/users" from "/users/" when both were added`, func(t *testing.T) {
 		router := NewRouter()
 
-		handlerOne := &MockHandler{
+		handlerOne := &mockHandler{
 			OnHandleFunc: func(w ResponseWriter, r *Request) {
 			},
 		}
-		handlerTwo := &MockHandler{
+		handlerTwo := &mockHandler{
 			OnHandleFunc: func(w ResponseWriter, r *Request) {
 			},
 		}
@@ -410,7 +411,7 @@ func TestRouter_Handler(t *testing.T) {
 		cases := []struct {
 			path    string
 			pattern string
-			handler *MockHandler
+			handler *mockHandler
 			params  Params
 		}{
 			{
@@ -460,14 +461,14 @@ func TestRouter_All(t *testing.T) {
 
 	type routeCase struct {
 		path    string
-		handler *MockHandler
+		handler *mockHandler
 		tests   []uriTest
 	}
 
 	cases := []routeCase{
 		{
 			path: "/users",
-			handler: &MockHandler{
+			handler: &mockHandler{
 				OnHandleFunc: func(w ResponseWriter, r *Request) {
 				},
 			},
@@ -477,7 +478,7 @@ func TestRouter_All(t *testing.T) {
 		},
 		{
 			path: "/users/{id}",
-			handler: &MockHandler{
+			handler: &mockHandler{
 				OnHandleFunc: func(w ResponseWriter, r *Request) {
 				},
 			},
@@ -749,6 +750,27 @@ func TestRouter_Use(t *testing.T) {
 		}
 	})
 
+	t.Run("the middleware can interrupt a request", func(t *testing.T) {
+		router := NewRouter()
+
+		justReachTheHandler := false
+
+		router.Use(&mockMiddleware{
+			InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+				next(errors.New("some error"))
+			},
+		})
+		router.All("/", &mockHandler{
+			OnHandleFunc: func(w ResponseWriter, r *Request) {
+				justReachTheHandler = true
+			},
+		})
+
+		if justReachTheHandler {
+			t.Error("didn't interrupted the request")
+		}
+	})
+
 	t.Run("able to add many middleware in the same call", func(t *testing.T) {
 		r := NewRouter()
 		r.Use(dummyMiddleware, dummyMiddleware, dummyMiddleware)
@@ -815,7 +837,7 @@ func TestRouterNamespace_Use(t *testing.T) {
 func TestRouter(t *testing.T) {
 
 	router := NewRouter()
-	router.Get("/greet", &MockHandler{
+	router.Get("/greet", &mockHandler{
 		OnHandleFunc: func(w ResponseWriter, r *Request) {
 			fmt.Fprint(w, `Hello, Requester`)
 		},
@@ -828,7 +850,7 @@ func TestRouter(t *testing.T) {
 			next()
 		},
 	})
-	router.Get("/admin/users", &MockHandler{
+	router.Get("/admin/users", &mockHandler{
 		OnHandleFunc: func(w ResponseWriter, r *Request) {
 			fmt.Fprint(w, `[]`)
 		},

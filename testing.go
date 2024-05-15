@@ -11,12 +11,12 @@ type stubHandler struct{}
 func (h *stubHandler) ServeHTTP(w ResponseWriter, r *Request) {
 }
 
-type MockHandler struct {
+type mockHandler struct {
 	lastParams   Params
 	OnHandleFunc func(ResponseWriter, *Request)
 }
 
-func (h *MockHandler) ServeHTTP(w ResponseWriter, r *Request) {
+func (h *mockHandler) ServeHTTP(w ResponseWriter, r *Request) {
 	h.lastParams = r.Params()
 	h.OnHandleFunc(w, r)
 }
