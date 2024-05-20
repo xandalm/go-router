@@ -137,16 +137,16 @@ func isValidPattern(p string) bool {
 		return false
 	}
 
-	return !PatternValidator.MatchString(p)
+	return PatternValidator.MatchString(p)
 }
 
 func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, path string) {
 	subnames := strings.Split(name, "/")
 
 	var acc string
-	var before string
+	// var before string
 	for _, name := range subnames {
-		before = acc
+		// before = acc
 		acc += name
 		if found, ok := ns[acc]; ok { // Exact match
 			n = found
@@ -154,14 +154,42 @@ func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, pa
 			path += acc + "/"
 			acc = ""
 		} else {
-			if found, ok := ns[before+"{}"]; ok { // Has param that can handle with path
-				n = found
-				ns = n.ns // next level
-				path += acc + "{}/"
-				acc = ""
-			} else {
+			found := false
+			for k, v := range ns {
+				subpathsA := strings.Split(k, "/")
+				subpathsB := strings.Split(acc, "/")
+				if len(subpathsA) != len(subpathsB) {
+					continue
+				}
+				matches := 0
+				for i, sub := range subpathsA {
+					if sub[0] == '{' {
+						matches++
+					} else {
+						if sub == subpathsB[i] {
+							matches++
+						}
+					}
+				}
+				if found = matches == len(subpathsA); found {
+					n = v
+					ns = n.ns
+					path += acc + k[0:strings.Index(k, "}")] + "/"
+					acc = ""
+					break
+				}
+			}
+			if !found {
 				acc += "/"
 			}
+			// if found, ok := ns[before+"{}"]; ok { // Has param that can handle with path
+			// 	n = found
+			// 	ns = n.ns // next level
+			// 	path += acc + "{}/"
+			// 	acc = ""
+			// } else {
+			// 	acc += "/"
+			// }
 		}
 	}
 
@@ -191,7 +219,7 @@ func parseNamespace(name string) string {
 	if regexp.MustCompile(`^\{[^\/]+\}`).MatchString(name) {
 		panic(ErrNamespaceStartsWithParam)
 	}
-	name = regexp.MustCompile(`\{[^\/]+\}`).ReplaceAllString(name, "{}")
+	// name = regexp.MustCompile(`\{[^\/]+\}`).ReplaceAllString(name, "{}")
 	return name
 }
 
@@ -420,7 +448,7 @@ func (ro *Router) register(pattern string, handler Handler, method string) {
 	ro.mu.Lock()
 	defer ro.mu.Unlock()
 
-	if isValidPattern(pattern) {
+	if !isValidPattern(pattern) {
 		panic("router: invalid pattern")
 	}
 
@@ -555,8 +583,9 @@ func (ro *Router) namespace(name string) *routerNamespace {
 
 	// new node (nn)
 	nn := &routerNamespace{
-		r:  ro,
-		ns: map[string]*routerNamespace{},
+		name: name,
+		r:    ro,
+		ns:   map[string]*routerNamespace{},
 	}
 
 	var ns map[string]*routerNamespace
@@ -654,6 +683,7 @@ func (ro *Router) addMiddlewareErrorHandler(meh MiddlewareErrorHandler) {
 }
 
 type routerNamespace struct {
+	name   string
 	r      *Router
 	p      *routerNamespace // parent
 	ns     map[string]*routerNamespace
@@ -676,9 +706,10 @@ func (na *routerNamespace) namespace(name string) *routerNamespace {
 
 	// new node (nn)
 	nn := &routerNamespace{
-		r:  na.r,
-		p:  na,
-		ns: map[string]*routerNamespace{},
+		name: name,
+		r:    na.r,
+		p:    na,
+		ns:   map[string]*routerNamespace{},
 	}
 
 	var ns map[string]*routerNamespace
@@ -728,6 +759,48 @@ func (na *routerNamespace) Namespace(name string) *routerNamespace {
 	defer r.mu.Unlock()
 
 	return na.namespace(name)
+}
+
+func (na *routerNamespace) All(pattern string, handler Handler) {
+	r := na.r
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !isValidPattern(pattern) {
+		panic("router: invalid pattern")
+	}
+
+	if handler == nil {
+		panic("router: nil handler")
+	}
+
+	var holdEntry **routerEntry
+	if pattern[len(pattern)-1] == '/' {
+		holdEntry = &na.es
+	} else {
+		holdEntry = &na.eu
+	}
+
+	if *holdEntry != nil {
+		entry := **holdEntry
+		if _, ok := entry.mh[MethodAll]; ok {
+			panic("router: multiple registration into " + pattern)
+		}
+		entry.mh[MethodAll] = handler
+	} else {
+		curr := na
+		for curr != nil {
+			pattern = "/" + curr.name + pattern
+			curr = curr.p
+		}
+		*holdEntry = &routerEntry{
+			pattern: pattern,
+			re:      createRegExp(pattern),
+			mh: map[string]Handler{
+				MethodAll: handler,
+			},
+		}
+	}
 }
 
 // Register one or more middlewares to intercept requests.
