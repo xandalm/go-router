@@ -106,10 +106,18 @@ func assertRouterHasNamespace(t testing.TB, r *Router, n string) {
 	}
 }
 
-func assertNamespaceHasNamespace(t testing.TB, rn *routerNamespace, n string) {
+func assertNamespaceHasNamespace(t testing.TB, n *namespace, name string) {
 	t.Helper()
 
-	if _, ok := rn.ns[n]; !ok {
-		t.Fatalf("there is no %q namespace in %v", n, rn.ns)
+	if _, ok := n.n.ns[name]; !ok {
+		t.Fatalf("there is no %q namespace in %v", name, n.n.ns)
+	}
+}
+
+func assertRouterNamespaceHasNamespace(t testing.TB, n *routerNamespace, name string) {
+	t.Helper()
+
+	if _, ok := n.ns[name]; !ok {
+		t.Fatalf("there is no %q namespace in %v", name, n.ns)
 	}
 }
