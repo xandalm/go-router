@@ -124,19 +124,25 @@ func createRegExp(pattern string) *regexp.Regexp {
 	return regexp.MustCompile(str)
 }
 
-var PatternValidator = regexp.MustCompile(`^((?:\w+\.)+\w+)?((?:\/(?:\w+|(?:\{\w+\}))+)*(?:\/(?:\w*(?:\.\w+)*)?)?)?$`)
+var patternValidator = regexp.MustCompile(`^((?:\w+\.)+\w+)?((?:\/(?:\w+|(?:\{\w+\}))+)*(?:\/(?:\w*(?:\.\w+)*)?)?)?$`)
+var namespaceValidator = regexp.MustCompile(`^((?:\w+\.)+\w+)?((?:\/?(?:\w+|(?:\{\w+\}))+)*(?:\/(?:\w*(?:\.\w+)*)?)?)?$`)
 
 func isValidPattern(p string) bool {
-
-	if PatternValidator == nil {
-		panic("router: nil pattern validator")
-	}
 
 	if p == "" {
 		return false
 	}
 
-	return PatternValidator.MatchString(p)
+	return patternValidator.MatchString(p)
+}
+
+func isValidNamespace(p string) bool {
+
+	if p == "" || p[0] == '/' {
+		return false
+	}
+
+	return namespaceValidator.MatchString(p)
 }
 
 func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, path string) {
@@ -610,6 +616,10 @@ func (ro *Router) Namespace(name string) *namespace {
 	ro.mu.Lock()
 	defer ro.mu.Unlock()
 
+	if !isValidNamespace(name) {
+		panic("router: invalid namespace")
+	}
+
 	var params []string
 	name, params = parseNamespace(name)
 
@@ -748,6 +758,10 @@ func (na *namespace) Namespace(name string) *namespace {
 	r := n.r
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if !isValidNamespace(name) {
+		panic("router: invalid namespace")
+	}
 
 	name, na.params = parseNamespace(name)
 

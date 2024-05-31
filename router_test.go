@@ -147,6 +147,7 @@ func TestRouter_register(t *testing.T) {
 			"///",
 			"/path//",
 			"url//",
+			"/users/{}",
 		}
 
 		for _, pattern := range cases {
@@ -156,7 +157,11 @@ func TestRouter_register(t *testing.T) {
 				defer func() {
 					r := recover()
 					if r == nil {
-						t.Error("didn't panic")
+						t.Fatal("didn't panic")
+					}
+					want := "router: invalid pattern"
+					if r != want {
+						t.Errorf("panics %v, but want %v", r, want)
 					}
 				}()
 				router.register(pattern, dummyHandler, MethodAll)
@@ -631,6 +636,33 @@ func TestRouter_Namespace(t *testing.T) {
 			t.Error("didn't get namespace, got nil")
 		}
 	})
+	t.Run("panic for invalid namespace", func(t *testing.T) {
+		type testCase struct {
+			testName string
+			value    string
+		}
+		cases := []testCase{
+			{"when starts with bar", "/media"},
+			{"when contains a unnamed param like", "users/{}"},
+		}
+
+		for _, c := range cases {
+			t.Run(c.testName, func(t *testing.T) {
+				defer func() {
+					r := recover()
+					if r == nil {
+						t.Fatal("didn't panic")
+					}
+					want := "router: invalid namespace"
+					if r != want {
+						t.Errorf("panics %v, but want %v", r, want)
+					}
+				}()
+				r := NewRouter()
+				r.Namespace(c.value)
+			})
+		}
+	})
 }
 
 func TestRouterNamespace_Namespace(t *testing.T) {
@@ -701,6 +733,42 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 
 		if got.n != v1.n {
 			t.Error("unable to reach namespace from the router")
+		}
+	})
+	t.Run("panic for invalid namespace", func(t *testing.T) {
+		type testCase struct {
+			testName string
+			value    string
+		}
+		cases := []testCase{
+			{"when starts with bar", "/media"},
+			{"when contains a unnamed param like", "{}"},
+		}
+		api := &namespace{
+			n: &routerNamespace{
+				"api",
+				NewRouter(),
+				nil,
+				map[string]*routerNamespace{},
+				nil,
+				nil,
+				nil,
+			},
+		}
+		for _, c := range cases {
+			t.Run(c.testName, func(t *testing.T) {
+				defer func() {
+					r := recover()
+					if r == nil {
+						t.Fatal("didn't panic")
+					}
+					want := "router: invalid namespace"
+					if r != want {
+						t.Errorf("panics %v, but want %v", r, want)
+					}
+				}()
+				api.Namespace(c.value)
+			})
 		}
 	})
 }
