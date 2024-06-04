@@ -783,7 +783,7 @@ func TestRouter_Namespace(t *testing.T) {
 	})
 }
 
-func TestRouterNamespace_Namespace(t *testing.T) {
+func TestNamespace_Namespace(t *testing.T) {
 	t.Run("create namespace from a namespace", func(t *testing.T) {
 		n := &namespace{
 			n: &routerNamespace{
@@ -891,7 +891,7 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 	})
 }
 
-func TestRouterNamespace_All(t *testing.T) {
+func TestNamespace_All(t *testing.T) {
 
 	type testCase struct {
 		name      string
@@ -951,6 +951,19 @@ func TestRouterNamespace_All(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("able to add handler to the namespace path without slash suffix", func(t *testing.T) {
+		router := &Router{}
+		namespace := router.Namespace("users")
+		namespace.All(dummyHandler)
+
+		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/users"), nil)
+
+		h, _, params := router.Handler(request)
+
+		assertHandler(t, h, dummyHandler)
+		assertParams(t, params, Params{})
+	})
 }
 
 var dummyMiddleware = &stubMiddleware{}
@@ -1089,7 +1102,7 @@ func TestRouter_Use(t *testing.T) {
 	})
 }
 
-func TestRouterNamespace_Use(t *testing.T) {
+func TestNamespace_Use(t *testing.T) {
 	t.Run("create middleware into namespace", func(t *testing.T) {
 		r := NewRouter()
 		n := r.Namespace("api")

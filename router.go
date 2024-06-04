@@ -774,13 +774,13 @@ func (na *namespace) Namespace(name string) *namespace {
 	}
 }
 
-func (na *namespace) All(pattern string, handler Handler) {
+func (na *namespace) register(pattern string, handler Handler) {
 	n := na.n
 	r := n.r
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if !isValidPattern(pattern) {
+	if pattern != "" && !isValidPattern(pattern) {
 		panic("router: invalid pattern")
 	}
 
@@ -789,10 +789,14 @@ func (na *namespace) All(pattern string, handler Handler) {
 	}
 
 	var holdEntry **routerEntry
-	if pattern[len(pattern)-1] == '/' {
-		holdEntry = &n.es
-	} else {
+	if pattern == "" {
 		holdEntry = &n.eu
+	} else {
+		if pattern[len(pattern)-1] == '/' {
+			holdEntry = &n.es
+		} else {
+			holdEntry = &n.eu
+		}
 	}
 
 	if *holdEntry != nil {
@@ -820,6 +824,15 @@ func (na *namespace) All(pattern string, handler Handler) {
 				MethodAll: handler,
 			},
 		}
+	}
+}
+
+func (na *namespace) All(v any, handler ...Handler) {
+	switch value := v.(type) {
+	case string:
+		na.register(value, handler[0])
+	case Handler:
+		na.register("", value)
 	}
 }
 
