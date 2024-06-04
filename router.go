@@ -43,16 +43,14 @@ func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 	f(w, r)
 }
 
-type routerEntry struct {
-	pattern string
-	re      *regexp.Regexp
-	mh      map[string]Handler
+type notFoundHandler struct{}
+
+func (h *notFoundHandler) ServeHTTP(w ResponseWriter, r *Request) {
+	w.WriteHeader(http.StatusNotFound)
 }
 
 // Holds a simple request handler that replies HTTP 404 status
-var NotFoundHandler = HandlerFunc(func(w ResponseWriter, r *Request) {
-	w.WriteHeader(http.StatusNotFound)
-})
+var NotFoundHandler = &notFoundHandler{}
 
 type redirectHandler struct {
 	url  string
@@ -205,6 +203,12 @@ func parseNamespace(name string) (string, []string) {
 		return "{}"
 	})
 	return name, params
+}
+
+type routerEntry struct {
+	pattern string
+	re      *regexp.Regexp
+	mh      map[string]Handler
 }
 
 // Like to standard ServeMux, it's a HTTP request multiplexer.

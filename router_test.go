@@ -3,7 +3,6 @@ package router
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -381,7 +380,7 @@ func TestRouter_Handler(t *testing.T) {
 		t.Run(fmt.Sprintf("when listen to %q and request %q", c.pattern, c.uri), func(t *testing.T) {
 			router := NewRouter()
 
-			router.All(c.pattern, dummyHandler)
+			router.register(c.pattern, dummyHandler, http.MethodGet)
 
 			request, _ := http.NewRequest(http.MethodGet, c.uri, nil)
 
@@ -410,8 +409,8 @@ func TestRouter_Handler(t *testing.T) {
 			},
 		}
 
-		router.All("/users/", handlerOne)
-		router.All("/users", handlerTwo)
+		router.register("/users/", handlerOne, http.MethodGet)
+		router.register("/users", handlerTwo, http.MethodGet)
 
 		cases := []struct {
 			path    string
@@ -453,64 +452,87 @@ func TestRouter_Handler(t *testing.T) {
 	})
 }
 
-type uriTest struct {
+type testResquestUsingHandler struct {
+	name            string // test case description
+	uri             string
+	method          string
+	expectedHandler Handler
+	expectedPattern string
+	expectedParams  Params
+}
+
+type testRequestUsingServeHTTP struct {
+	name           string // test case description
 	uri            string
 	method         string
-	body           io.Reader
-	expectedParams Params
 	expectedStatus int
 	expectedBody   string
 }
 
 func TestRouter_All(t *testing.T) {
 
-	type routeCase struct {
-		path    string
-		handler *mockHandler
-		tests   []uriTest
+	type testCase struct {
+		path     string
+		uriTests []testResquestUsingHandler
 	}
 
-	cases := []routeCase{
+	cases := []testCase{
 		{
-			path: "/users",
-			handler: &mockHandler{
-				OnHandleFunc: func(w ResponseWriter, r *Request) {
+			"/users",
+			[]testResquestUsingHandler{
+				{
+					uri:             newDummyURI("/users"),
+					method:          http.MethodGet,
+					expectedHandler: dummyHandler,
+					expectedParams:  Params{},
 				},
-			},
-			tests: []uriTest{
-				{newDummyURI("/users"), http.MethodGet, nil, Params{}, http.StatusOK, ""},
+				{
+					uri:             newDummyURI("/users"),
+					method:          http.MethodPost,
+					expectedHandler: dummyHandler,
+					expectedParams:  Params{},
+				},
+				{
+					uri:             newDummyURI("/users"),
+					method:          http.MethodPut,
+					expectedHandler: dummyHandler,
+					expectedParams:  Params{},
+				},
+				{
+					uri:             newDummyURI("/users"),
+					method:          http.MethodDelete,
+					expectedHandler: dummyHandler,
+					expectedParams:  Params{},
+				},
 			},
 		},
 		{
-			path: "/users/{id}",
-			handler: &mockHandler{
-				OnHandleFunc: func(w ResponseWriter, r *Request) {
+			"/users/{id}",
+			[]testResquestUsingHandler{
+				{
+					uri:             newDummyURI("/users/13"),
+					method:          http.MethodGet,
+					expectedHandler: dummyHandler,
+					expectedParams:  Params{"id": "13"},
 				},
-			},
-			tests: []uriTest{
-				{newDummyURI("/users/13"), http.MethodGet, nil, Params{"id": "13"}, http.StatusOK, ""},
 			},
 		},
 	}
 
 	for _, c := range cases {
-		t.Run(fmt.Sprintf("add %q pattern", c.path), func(t *testing.T) {
+		t.Run(fmt.Sprintf("add %s pattern", c.path), func(t *testing.T) {
 			router := &Router{}
 
-			router.All(c.path, c.handler)
+			router.All(c.path, dummyHandler)
 
-			for _, tt := range c.tests {
-				t.Run(fmt.Sprintf("request %s on %q", tt.method, tt.uri), func(t *testing.T) {
+			for _, tt := range c.uriTests {
+				t.Run(fmt.Sprintf("%s to %s returns expected handler and params", tt.method, tt.uri), func(t *testing.T) {
 					request, _ := http.NewRequest(tt.method, tt.uri, nil)
-					response := httptest.NewRecorder()
 
-					router.ServeHTTP(response, request)
+					h, _, params := router.Handler(request)
 
-					assertStatus(t, response, tt.expectedStatus)
-
-					assertParams(t, c.handler.lastParams, tt.expectedParams)
-
-					assertBody(t, response, tt.expectedBody)
+					assertHandler(t, h, dummyHandler)
+					assertParams(t, params, tt.expectedParams)
 				})
 			}
 		})
@@ -524,21 +546,45 @@ func TestRouter_Get(t *testing.T) {
 
 		router.Get("/products", dummyHandler)
 
-		cases := []uriTest{
-			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusOK, ""},
-			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusNotFound, ""},
-			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusNotFound, ""},
-			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusNotFound, ""},
+		cases := []testResquestUsingHandler{
+			{
+				name:            "returns handler and empty params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodGet,
+				expectedHandler: dummyHandler,
+				expectedParams:  Params{},
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodPost,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodPut,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodDelete,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
 		}
 
 		for _, c := range cases {
-			t.Run(fmt.Sprintf("returns %d for %s %q", c.expectedStatus, c.method, c.uri), func(t *testing.T) {
+			t.Run(c.name, func(t *testing.T) {
 				request, _ := http.NewRequest(c.method, c.uri, nil)
-				response := httptest.NewRecorder()
 
-				router.ServeHTTP(response, request)
+				h, _, params := router.Handler(request)
 
-				assertStatus(t, response, c.expectedStatus)
+				assertHandler(t, h, c.expectedHandler)
+				assertParams(t, params, c.expectedParams)
 			})
 		}
 	})
@@ -551,21 +597,45 @@ func TestRouter_Post(t *testing.T) {
 
 		router.Post("/products", dummyHandler)
 
-		cases := []uriTest{
-			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusOK, ""},
-			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusNotFound, ""},
-			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusNotFound, ""},
-			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusNotFound, ""},
+		cases := []testResquestUsingHandler{
+			{
+				name:            "returns handler and empty params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodPost,
+				expectedHandler: dummyHandler,
+				expectedParams:  Params{},
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodGet,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodPut,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodDelete,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
 		}
 
 		for _, c := range cases {
-			t.Run(fmt.Sprintf("returns %d for %s %q", c.expectedStatus, c.method, c.uri), func(t *testing.T) {
+			t.Run(c.name, func(t *testing.T) {
 				request, _ := http.NewRequest(c.method, c.uri, nil)
-				response := httptest.NewRecorder()
 
-				router.ServeHTTP(response, request)
+				h, _, params := router.Handler(request)
 
-				assertStatus(t, response, c.expectedStatus)
+				assertHandler(t, h, c.expectedHandler)
+				assertParams(t, params, c.expectedParams)
 			})
 		}
 	})
@@ -578,21 +648,45 @@ func TestRouter_Put(t *testing.T) {
 
 		router.Put("/products", dummyHandler)
 
-		cases := []uriTest{
-			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusOK, ""},
-			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusNotFound, ""},
-			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusNotFound, ""},
-			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusNotFound, ""},
+		cases := []testResquestUsingHandler{
+			{
+				name:            "returns handler and empty params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodPut,
+				expectedHandler: dummyHandler,
+				expectedParams:  Params{},
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodGet,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodPost,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodDelete,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
 		}
 
 		for _, c := range cases {
-			t.Run(fmt.Sprintf("returns %d for %s %q", c.expectedStatus, c.method, c.uri), func(t *testing.T) {
+			t.Run(c.name, func(t *testing.T) {
 				request, _ := http.NewRequest(c.method, c.uri, nil)
-				response := httptest.NewRecorder()
 
-				router.ServeHTTP(response, request)
+				h, _, params := router.Handler(request)
 
-				assertStatus(t, response, c.expectedStatus)
+				assertHandler(t, h, c.expectedHandler)
+				assertParams(t, params, c.expectedParams)
 			})
 		}
 	})
@@ -605,21 +699,45 @@ func TestRouter_Delete(t *testing.T) {
 
 		router.Delete("/products", dummyHandler)
 
-		cases := []uriTest{
-			{newDummyURI("/products"), http.MethodDelete, nil, Params{}, http.StatusOK, ""},
-			{newDummyURI("/products"), http.MethodGet, nil, Params{}, http.StatusNotFound, ""},
-			{newDummyURI("/products"), http.MethodPut, nil, Params{}, http.StatusNotFound, ""},
-			{newDummyURI("/products"), http.MethodPost, nil, Params{}, http.StatusNotFound, ""},
+		cases := []testResquestUsingHandler{
+			{
+				name:            "returns handler and empty params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodDelete,
+				expectedHandler: dummyHandler,
+				expectedParams:  Params{},
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodGet,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodPut,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
+			{
+				name:            "returns nil handler and nil params",
+				uri:             newDummyURI("/products"),
+				method:          http.MethodPost,
+				expectedHandler: NotFoundHandler,
+				expectedParams:  nil,
+			},
 		}
 
 		for _, c := range cases {
-			t.Run(fmt.Sprintf("returns %d for %s %q", c.expectedStatus, c.method, c.uri), func(t *testing.T) {
+			t.Run(c.name, func(t *testing.T) {
 				request, _ := http.NewRequest(c.method, c.uri, nil)
-				response := httptest.NewRecorder()
 
-				router.ServeHTTP(response, request)
+				h, _, params := router.Handler(request)
 
-				assertStatus(t, response, c.expectedStatus)
+				assertHandler(t, h, c.expectedHandler)
+				assertParams(t, params, c.expectedParams)
 			})
 		}
 	})
@@ -775,37 +893,64 @@ func TestRouterNamespace_Namespace(t *testing.T) {
 
 func TestRouterNamespace_All(t *testing.T) {
 
-	t.Run("create a simple namespace, add handler to its \"/\" and get status 301", func(t *testing.T) {
-		router := &Router{}
-		namespace := router.Namespace("users")
-		namespace.All("/", &mockHandler{
-			OnHandleFunc: func(w ResponseWriter, r *Request) {
+	type testCase struct {
+		name      string
+		namespace string
+		path      string
+		uriTests  []testResquestUsingHandler
+	}
+
+	cases := []testCase{
+		{
+			"add handler to \"/\" in a simple namespace",
+			"users",
+			"/",
+			[]testResquestUsingHandler{
+				{
+					name:            "returns associated handler and empty params",
+					uri:             newDummyURI("/users/"),
+					expectedHandler: dummyHandler,
+					expectedParams:  Params{},
+				},
+				{
+					name:            "returns redirect handler and nil to params",
+					uri:             newDummyURI("/users"),
+					expectedHandler: RedirectHandler("/users/", http.StatusMovedPermanently),
+					expectedParams:  nil,
+				},
 			},
-		})
-
-		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/users"), nil)
-		response := httptest.NewRecorder()
-
-		router.ServeHTTP(response, request)
-
-		assertStatus(t, response, http.StatusMovedPermanently)
-	})
-	t.Run("create a namespace with a param suffix, add handler in a nest layer and get status 200", func(t *testing.T) {
-
-		router := &Router{}
-		namespace := router.Namespace("users/{id}")
-		namespace.All("/gifs", &mockHandler{
-			OnHandleFunc: func(w ResponseWriter, r *Request) {
+		},
+		{
+			"add handler in a nest layer of the namespace with a param suffix",
+			"users/{id}",
+			"/gifs",
+			[]testResquestUsingHandler{
+				{
+					name:            "returns associated handler and [id=1] into params",
+					uri:             newDummyURI("/users/1/gifs"),
+					expectedHandler: dummyHandler,
+					expectedParams:  Params{"id": "1"},
+				},
 			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			router := &Router{}
+			namespace := router.Namespace(c.namespace)
+			namespace.All(c.path, dummyHandler)
+
+			for _, cc := range c.uriTests {
+				request, _ := http.NewRequest(http.MethodGet, cc.uri, nil)
+
+				h, _, params := router.Handler(request)
+
+				assertHandler(t, h, cc.expectedHandler)
+				assertParams(t, params, cc.expectedParams)
+			}
 		})
-
-		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/users/1/gifs"), nil)
-		response := httptest.NewRecorder()
-
-		router.ServeHTTP(response, request)
-
-		assertStatus(t, response, http.StatusOK)
-	})
+	}
 }
 
 var dummyMiddleware = &stubMiddleware{}
