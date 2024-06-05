@@ -478,17 +478,17 @@ func (ro *Router) register(pattern string, handler Handler, method string) {
 	if *holdEntry != nil {
 		entry := **holdEntry
 		if _, ok := entry.mh[method]; ok {
-			panic("router: multiple registration into " + pattern)
+			panic("router: multiple registration into " + pattern + " to method " + method)
 		}
 		entry.mh[method] = handler
-	} else {
-		*holdEntry = &routerEntry{
-			pattern: pattern,
-			re:      createRegExp(pattern),
-			mh: map[string]Handler{
-				method: handler,
-			},
-		}
+		return
+	}
+	*holdEntry = &routerEntry{
+		pattern: pattern,
+		re:      createRegExp(pattern),
+		mh: map[string]Handler{
+			method: handler,
+		},
 	}
 }
 
@@ -580,12 +580,10 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		// hold router children (namespace list from this level)
 		ns = ro.ns
 	} else {
-		// hold falling node children (namespace list from this level)
+		// hold node children (namespace list from this level)
 		ns = n.ns
-		// set falling node parent to be parent of the new node
-		nn.p = n.p
-		// set new node as parent of the falling node
-		n.p = nn
+		// set node parent to be parent of the new node
+		nn.p = n
 	}
 
 	for k, v := range ns {
@@ -594,6 +592,7 @@ func (ro *Router) namespace(name string) *routerNamespace {
 			continue
 		}
 		delete(ns, k)
+		v.name = last
 		v.p = nn
 		nn.ns[last] = v
 	}
@@ -702,7 +701,6 @@ func (na *routerNamespace) namespace(name string) *routerNamespace {
 	}
 	name = strings.TrimPrefix(name, path+"/")
 
-	// new node (nn)
 	nn := &routerNamespace{
 		name: name,
 		r:    na.r,
@@ -712,15 +710,10 @@ func (na *routerNamespace) namespace(name string) *routerNamespace {
 
 	var ns map[string]*routerNamespace
 	if n == nil {
-		// hold router children (namespace list from this level)
 		ns = na.ns
 	} else {
-		// hold falling node children (namespace list from this level)
 		ns = n.ns
-		// set falling node parent to be parent of the new node
-		nn.p = n.p
-		// set new node as parent of the falling node
-		n.p = nn
+		nn.p = n
 	}
 
 	for k, v := range ns {
@@ -737,6 +730,15 @@ func (na *routerNamespace) namespace(name string) *routerNamespace {
 	ns[name] = nn // ignoring slash
 
 	return nn
+}
+
+func (na *routerNamespace) path() string {
+	var acc string
+	for curr := na; curr != nil; {
+		acc = "/" + curr.name + acc
+		curr = curr.p
+	}
+	return acc
 }
 
 type namespace struct {
@@ -774,11 +776,18 @@ func (na *namespace) Namespace(name string) *namespace {
 	}
 }
 
-func (na *namespace) register(pattern string, handler Handler) {
-	n := na.n
-	r := n.r
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func distributeParams(pattern string, params []string) string {
+	var i int
+	return regexp.MustCompile(`\{\}`).ReplaceAllStringFunc(pattern, func(s string) string {
+		ret := params[i]
+		i++
+		return ret
+	})
+}
+
+func (na *namespace) register(pattern string, handler Handler, method string) {
+	na.n.r.mu.Lock()
+	defer na.n.r.mu.Unlock()
 
 	if pattern != "" && !isValidPattern(pattern) {
 		panic("router: invalid pattern")
@@ -788,51 +797,63 @@ func (na *namespace) register(pattern string, handler Handler) {
 		panic("router: nil handler")
 	}
 
-	var holdEntry **routerEntry
-	if pattern == "" {
-		holdEntry = &n.eu
+	name, params := parseNamespace(pattern)
+	params = append(na.params, params...)
+
+	var n *routerNamespace
+	if name == "" {
+		n = na.n
 	} else {
-		if pattern[len(pattern)-1] == '/' {
-			holdEntry = &n.es
-		} else {
-			holdEntry = &n.eu
-		}
+		n = na.n.namespace(name)
+	}
+
+	slashed := pattern != "" && pattern[len(pattern)-1] == '/'
+
+	var holdEntry **routerEntry
+	if slashed {
+		holdEntry = &n.es
+	} else {
+		holdEntry = &n.eu
 	}
 
 	if *holdEntry != nil {
 		entry := **holdEntry
-		if _, ok := entry.mh[MethodAll]; ok {
-			panic("router: multiple registration into " + pattern)
+		if _, ok := entry.mh[method]; ok {
+			panic("router: multiple registration into " + pattern + " to method " + method)
 		}
-		entry.mh[MethodAll] = handler
+		entry.mh[method] = handler
+		return
+	}
+
+	if slashed {
+		pattern = n.path() + "/"
 	} else {
-		curr := n
-		for curr != nil {
-			pattern = "/" + curr.name + pattern
-			curr = curr.p
-		}
-		i := 0
-		pattern = regexp.MustCompile(`\{\}`).ReplaceAllStringFunc(pattern, func(s string) string {
-			ret := na.params[i]
-			i++
-			return ret
-		})
-		*holdEntry = &routerEntry{
-			pattern: pattern,
-			re:      createRegExp(pattern),
-			mh: map[string]Handler{
-				MethodAll: handler,
-			},
-		}
+		pattern = n.path()
+	}
+
+	pattern = distributeParams(pattern, params)
+
+	*holdEntry = &routerEntry{
+		pattern: pattern,
+		re:      createRegExp(pattern),
+		mh: map[string]Handler{
+			method: handler,
+		},
 	}
 }
 
 func (na *namespace) All(v any, handler ...Handler) {
 	switch value := v.(type) {
 	case string:
-		na.register(value, handler[0])
+		if value == "" {
+			panic("router: invalid pattern")
+		}
+		if len(handler) == 0 {
+			panic("router: missing handler")
+		}
+		na.register(value, handler[0], MethodAll)
 	case Handler:
-		na.register("", value)
+		na.register("", value, MethodAll)
 	}
 }
 

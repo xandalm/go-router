@@ -891,6 +891,124 @@ func TestNamespace_Namespace(t *testing.T) {
 	})
 }
 
+func TestNamespace_register(t *testing.T) {
+
+	t.Run("panic on invalid pattern", func(t *testing.T) {
+
+		cases := []string{
+			"//",
+			"///",
+			"/path//",
+			"url//",
+			"/users/{}",
+		}
+
+		for _, pattern := range cases {
+			t.Run(fmt.Sprintf("for %q pattern", pattern), func(t *testing.T) {
+				router := &Router{}
+				namespace := router.Namespace("api")
+
+				defer func() {
+					r := recover()
+					if r == nil {
+						t.Fatal("didn't panic")
+					}
+					want := "router: invalid pattern"
+					if r != want {
+						t.Errorf("panics %v, but want %v", r, want)
+					}
+				}()
+				namespace.register(pattern, dummyHandler, MethodAll)
+			})
+		}
+	})
+
+	t.Run("panic on nil handler", func(t *testing.T) {
+		router := &Router{}
+		namespace := router.Namespace("api")
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("didn't panic")
+			}
+		}()
+
+		namespace.register("/path", nil, MethodAll)
+	})
+
+	t.Run("panic on re-register same pattern and method", func(t *testing.T) {
+		router := &Router{}
+		namespace := router.Namespace("api")
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("didn't panic")
+			}
+		}()
+
+		namespace.register("/path", dummyHandler, MethodAll)
+		namespace.register("/path", dummyHandler, MethodAll)
+	})
+
+	t.Run("create namespaces indirectly", func(t *testing.T) {
+		router := &Router{}
+		namespace := router.Namespace("api")
+
+		cases := []struct {
+			pattern   string
+			method    string
+			namespace string
+		}{
+			{"/use", MethodAll, "use"},
+			{"/get", MethodGet, "get"},
+			{"/put", MethodPut, "put"},
+			{"/post", MethodPost, "post"},
+			{"/delete", MethodDelete, "delete"},
+			{"/admin/products", MethodGet, "admin/products"},
+			{"/customers/{id}", MethodGet, "customers/{}"},
+		}
+
+		for _, c := range cases {
+			t.Run(fmt.Sprintf("registering %s method on %s with api namespace", c.method, c.pattern), func(t *testing.T) {
+				namespace.register(c.pattern, dummyHandler, c.method)
+
+				assertNamespaceHasNamespace(t, namespace, c.namespace)
+			})
+		}
+	})
+
+	userRE := regexp.MustCompile(`^\/api\/users$`)
+
+	cases := []struct {
+		pattern string
+		re      *regexp.Regexp
+		method  string
+	}{
+		{"/users", userRE, MethodAll},
+		{"/v1/users", regexp.MustCompile(`^\/api\/v1\/users$`), MethodAll},
+		{"/users", userRE, MethodGet},
+		{"/users", userRE, MethodPost},
+		{"/users", userRE, MethodPut},
+		{"/users", userRE, MethodDelete},
+		{"/users/{id}", regexp.MustCompile(`^\/api\/users\/(?P<id>[^\/]+)$`), MethodGet},
+		{"/", regexp.MustCompile(`^\/api\/$`), MethodGet},
+	}
+
+	router := &Router{}
+	namespace := router.Namespace("api")
+
+	for _, c := range cases {
+		t.Run(fmt.Sprintf(`add %q to %s`, c.pattern, c.method), func(t *testing.T) {
+
+			namespace.register(c.pattern, dummyHandler, c.method)
+
+			checkRegisteredEntry(t, router, "/api"+c.pattern, c.re, c.method, dummyHandler)
+		})
+	}
+}
+
 func TestNamespace_All(t *testing.T) {
 
 	type testCase struct {
@@ -952,7 +1070,7 @@ func TestNamespace_All(t *testing.T) {
 		})
 	}
 
-	t.Run("able to add handler to the namespace path without slash suffix", func(t *testing.T) {
+	t.Run("able to add handler to the namespace path (without slash suffix)", func(t *testing.T) {
 		router := &Router{}
 		namespace := router.Namespace("users")
 		namespace.All(dummyHandler)
@@ -963,6 +1081,30 @@ func TestNamespace_All(t *testing.T) {
 
 		assertHandler(t, h, dummyHandler)
 		assertParams(t, params, Params{})
+	})
+
+	t.Run("panic on empty pattern", func(t *testing.T) {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("didn't panic")
+			}
+		}()
+		router := &Router{}
+		namespace := router.Namespace("users")
+		namespace.All("", dummyHandler)
+	})
+
+	t.Run("panic when give no one handler", func(t *testing.T) {
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("didn't panic")
+			}
+		}()
+		router := &Router{}
+		namespace := router.Namespace("users")
+		namespace.All("/actives")
 	})
 }
 
