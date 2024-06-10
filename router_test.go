@@ -158,9 +158,8 @@ func TestRouter_register(t *testing.T) {
 					if r == nil {
 						t.Fatal("didn't panic")
 					}
-					want := "router: invalid pattern"
-					if r != want {
-						t.Errorf("panics %v, but want %v", r, want)
+					if r != PanicMsgInvalidPattern {
+						t.Errorf("panics %v, but want %v", r, PanicMsgInvalidPattern)
 					}
 				}()
 				router.register(pattern, dummyHandler, MethodAll)
@@ -176,6 +175,9 @@ func TestRouter_register(t *testing.T) {
 			if r == nil {
 				t.Error("didn't panic")
 			}
+			if r != PanicMsgEmptyHandler {
+				t.Errorf("panics %v, but want %v", r, PanicMsgEmptyHandler)
+			}
 		}()
 
 		router.register("/path", nil, MethodAll)
@@ -188,6 +190,9 @@ func TestRouter_register(t *testing.T) {
 			r := recover()
 			if r == nil {
 				t.Error("didn't panic")
+			}
+			if r != PanicMsgEndpointDuplication {
+				t.Errorf("panics %v, but want %v", r, PanicMsgEndpointDuplication)
 			}
 		}()
 
@@ -259,6 +264,9 @@ func TestRouter_registerFunc(t *testing.T) {
 			r := recover()
 			if r == nil {
 				t.Error("didn't panic")
+			}
+			if r != PanicMsgEmptyHandler {
+				t.Errorf("panics %v, but want %v", r, PanicMsgEmptyHandler)
 			}
 		}()
 
@@ -771,9 +779,8 @@ func TestRouter_Namespace(t *testing.T) {
 					if r == nil {
 						t.Fatal("didn't panic")
 					}
-					want := "router: invalid namespace"
-					if r != want {
-						t.Errorf("panics %v, but want %v", r, want)
+					if r != PanicMsgInvalidNamespace {
+						t.Errorf("panics %v, but want %v", r, PanicMsgInvalidNamespace)
 					}
 				}()
 				r := NewRouter()
@@ -880,9 +887,8 @@ func TestNamespace_Namespace(t *testing.T) {
 					if r == nil {
 						t.Fatal("didn't panic")
 					}
-					want := "router: invalid namespace"
-					if r != want {
-						t.Errorf("panics %v, but want %v", r, want)
+					if r != PanicMsgInvalidNamespace {
+						t.Errorf("panics %v, but want %v", r, PanicMsgInvalidNamespace)
 					}
 				}()
 				api.Namespace(c.value)
@@ -913,9 +919,8 @@ func TestNamespace_register(t *testing.T) {
 					if r == nil {
 						t.Fatal("didn't panic")
 					}
-					want := "router: invalid pattern"
-					if r != want {
-						t.Errorf("panics %v, but want %v", r, want)
+					if r != PanicMsgInvalidPattern {
+						t.Errorf("panics %v, but want %v", r, PanicMsgInvalidPattern)
 					}
 				}()
 				namespace.register(pattern, dummyHandler, MethodAll)
@@ -932,6 +937,9 @@ func TestNamespace_register(t *testing.T) {
 			if r == nil {
 				t.Error("didn't panic")
 			}
+			if r != PanicMsgEmptyHandler {
+				t.Errorf("panics %v, but want %v", r, PanicMsgEmptyHandler)
+			}
 		}()
 
 		namespace.register("/path", nil, MethodAll)
@@ -945,6 +953,9 @@ func TestNamespace_register(t *testing.T) {
 			r := recover()
 			if r == nil {
 				t.Error("didn't panic")
+			}
+			if r != PanicMsgEndpointDuplication {
+				t.Errorf("panics %v, but want %v", r, PanicMsgEndpointDuplication)
 			}
 		}()
 
@@ -1089,6 +1100,9 @@ func TestNamespace_All(t *testing.T) {
 			if r == nil {
 				t.Error("didn't panic")
 			}
+			if r != PanicMsgInvalidPattern {
+				t.Errorf("panics %v, but want %v", r, PanicMsgInvalidPattern)
+			}
 		}()
 		router := &Router{}
 		namespace := router.Namespace("users")
@@ -1100,6 +1114,9 @@ func TestNamespace_All(t *testing.T) {
 			r := recover()
 			if r == nil {
 				t.Error("didn't panic")
+			}
+			if r != PanicMsgMissingHandler {
+				t.Errorf("panics %v, but want %v", r, PanicMsgMissingHandler)
 			}
 		}()
 		router := &Router{}

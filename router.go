@@ -20,6 +20,14 @@ const (
 
 const ErrNamespaceStartsWithParam = "the given namespace starts with param"
 
+const (
+	PanicMsgInvalidPattern      = "router: invalid pattern"
+	PanicMsgInvalidNamespace    = "router: invalid namespace"
+	PanicMsgEmptyHandler        = "router: nil handler"
+	PanicMsgMissingHandler      = "router: missing handler"
+	PanicMsgEndpointDuplication = "router: endpoint duplication"
+)
+
 type ResponseWriter http.ResponseWriter
 
 type Handler interface {
@@ -194,9 +202,9 @@ func parseNamespace(name string) (string, []string) {
 	name = strings.TrimPrefix(name, "/")
 	name = strings.TrimSuffix(name, "/")
 
-	if regexp.MustCompile(`^\{[^\/]+\}`).MatchString(name) {
-		panic(ErrNamespaceStartsWithParam)
-	}
+	// if regexp.MustCompile(`^\{[^\/]+\}`).MatchString(name) {
+	// 	panic(ErrNamespaceStartsWithParam)
+	// }
 	var params []string
 	name = paramsSeeker.ReplaceAllStringFunc(name, func(s string) string {
 		params = append(params, s)
@@ -439,17 +447,19 @@ func (ro *Router) register(pattern string, handler Handler, method string) {
 	defer ro.mu.Unlock()
 
 	if !isValidPattern(pattern) {
-		panic("router: invalid pattern")
+		panic(PanicMsgInvalidPattern)
 	}
 
 	if handler == nil {
-		panic("router: nil handler")
+		panic(PanicMsgEmptyHandler)
 	}
 
 	if pattern == "/" {
 		// handle for http://example.url and http://example.url/
 		if ro.e != nil {
-			panic("router: multiple registration into " + pattern)
+			if _, ok := ro.e.mh[method]; ok {
+				panic(PanicMsgEndpointDuplication)
+			}
 		}
 		ro.e = &routerEntry{
 			pattern: pattern,
@@ -478,7 +488,7 @@ func (ro *Router) register(pattern string, handler Handler, method string) {
 	if *holdEntry != nil {
 		entry := **holdEntry
 		if _, ok := entry.mh[method]; ok {
-			panic("router: multiple registration into " + pattern + " to method " + method)
+			panic(PanicMsgEndpointDuplication)
 		}
 		entry.mh[method] = handler
 		return
@@ -494,7 +504,7 @@ func (ro *Router) register(pattern string, handler Handler, method string) {
 
 func (ro *Router) registerFunc(pattern string, handler func(w ResponseWriter, r *Request), method string) {
 	if handler == nil {
-		panic("router: nil handler")
+		panic(PanicMsgEmptyHandler)
 	}
 	ro.register(pattern, HandlerFunc(handler), method)
 }
@@ -620,7 +630,7 @@ func (ro *Router) Namespace(name string) *namespace {
 	defer ro.mu.Unlock()
 
 	if !isValidNamespace(name) {
-		panic("router: invalid namespace")
+		panic(PanicMsgInvalidNamespace)
 	}
 
 	var params []string
@@ -766,7 +776,7 @@ func (na *namespace) Namespace(name string) *namespace {
 	defer r.mu.Unlock()
 
 	if !isValidNamespace(name) {
-		panic("router: invalid namespace")
+		panic(PanicMsgInvalidNamespace)
 	}
 
 	name, na.params = parseNamespace(name)
@@ -790,11 +800,11 @@ func (na *namespace) register(pattern string, handler Handler, method string) {
 	defer na.n.r.mu.Unlock()
 
 	if pattern != "" && !isValidPattern(pattern) {
-		panic("router: invalid pattern")
+		panic(PanicMsgInvalidPattern)
 	}
 
 	if handler == nil {
-		panic("router: nil handler")
+		panic(PanicMsgEmptyHandler)
 	}
 
 	name, params := parseNamespace(pattern)
@@ -819,7 +829,7 @@ func (na *namespace) register(pattern string, handler Handler, method string) {
 	if *holdEntry != nil {
 		entry := **holdEntry
 		if _, ok := entry.mh[method]; ok {
-			panic("router: multiple registration into " + pattern + " to method " + method)
+			panic(PanicMsgEndpointDuplication)
 		}
 		entry.mh[method] = handler
 		return
@@ -846,10 +856,10 @@ func (na *namespace) All(v any, handler ...Handler) {
 	switch value := v.(type) {
 	case string:
 		if value == "" {
-			panic("router: invalid pattern")
+			panic(PanicMsgInvalidPattern)
 		}
 		if len(handler) == 0 {
-			panic("router: missing handler")
+			panic(PanicMsgMissingHandler)
 		}
 		na.register(value, handler[0], MethodAll)
 	case Handler:
