@@ -905,6 +905,14 @@ func (na *namespace) Post(v any, handler ...Handler) {
 	na.switchRegister(MethodPost, v, handler...)
 }
 
+func (na *namespace) Put(v any, handler ...Handler) {
+	na.switchRegister(MethodPut, v, handler...)
+}
+
+func (na *namespace) Delete(v any, handler ...Handler) {
+	na.switchRegister(MethodDelete, v, handler...)
+}
+
 // Register one or more middlewares to intercept requests.
 // These middlewares will be registered in the namespace.
 func (na *namespace) Use(mw ...Middleware) {

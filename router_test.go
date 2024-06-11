@@ -538,7 +538,7 @@ func TestRouter_Handler(t *testing.T) {
 type testResquestUsingHandler struct {
 	name            string // test case description
 	uri             string
-	method          string
+	httpMethod      string
 	expectedHandler Handler
 	expectedPattern string
 	expectedParams  Params
@@ -565,25 +565,25 @@ func TestRouter_All(t *testing.T) {
 			[]testResquestUsingHandler{
 				{
 					uri:             newDummyURI("/users"),
-					method:          http.MethodGet,
+					httpMethod:      http.MethodGet,
 					expectedHandler: dummyHandler,
 					expectedParams:  Params{},
 				},
 				{
 					uri:             newDummyURI("/users"),
-					method:          http.MethodPost,
+					httpMethod:      http.MethodPost,
 					expectedHandler: dummyHandler,
 					expectedParams:  Params{},
 				},
 				{
 					uri:             newDummyURI("/users"),
-					method:          http.MethodPut,
+					httpMethod:      http.MethodPut,
 					expectedHandler: dummyHandler,
 					expectedParams:  Params{},
 				},
 				{
 					uri:             newDummyURI("/users"),
-					method:          http.MethodDelete,
+					httpMethod:      http.MethodDelete,
 					expectedHandler: dummyHandler,
 					expectedParams:  Params{},
 				},
@@ -594,7 +594,7 @@ func TestRouter_All(t *testing.T) {
 			[]testResquestUsingHandler{
 				{
 					uri:             newDummyURI("/users/13"),
-					method:          http.MethodGet,
+					httpMethod:      http.MethodGet,
 					expectedHandler: dummyHandler,
 					expectedParams:  Params{"id": "13"},
 				},
@@ -609,8 +609,8 @@ func TestRouter_All(t *testing.T) {
 			router.All(c.path, dummyHandler)
 
 			for _, tt := range c.uriTests {
-				t.Run(fmt.Sprintf("%s to %s returns expected handler and params", tt.method, tt.uri), func(t *testing.T) {
-					request, _ := http.NewRequest(tt.method, tt.uri, nil)
+				t.Run(fmt.Sprintf("%s to %s returns expected handler and params", tt.httpMethod, tt.uri), func(t *testing.T) {
+					request, _ := http.NewRequest(tt.httpMethod, tt.uri, nil)
 
 					h, _, params := router.Handler(request)
 
@@ -633,28 +633,28 @@ func TestRouter_Get(t *testing.T) {
 			{
 				name:            "returns handler and empty params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodGet,
+				httpMethod:      http.MethodGet,
 				expectedHandler: dummyHandler,
 				expectedParams:  Params{},
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodPost,
+				httpMethod:      http.MethodPost,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodPut,
+				httpMethod:      http.MethodPut,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodDelete,
+				httpMethod:      http.MethodDelete,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
@@ -662,7 +662,7 @@ func TestRouter_Get(t *testing.T) {
 
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
-				request, _ := http.NewRequest(c.method, c.uri, nil)
+				request, _ := http.NewRequest(c.httpMethod, c.uri, nil)
 
 				h, _, params := router.Handler(request)
 
@@ -684,28 +684,28 @@ func TestRouter_Post(t *testing.T) {
 			{
 				name:            "returns handler and empty params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodPost,
+				httpMethod:      http.MethodPost,
 				expectedHandler: dummyHandler,
 				expectedParams:  Params{},
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodGet,
+				httpMethod:      http.MethodGet,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodPut,
+				httpMethod:      http.MethodPut,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodDelete,
+				httpMethod:      http.MethodDelete,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
@@ -713,7 +713,7 @@ func TestRouter_Post(t *testing.T) {
 
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
-				request, _ := http.NewRequest(c.method, c.uri, nil)
+				request, _ := http.NewRequest(c.httpMethod, c.uri, nil)
 
 				h, _, params := router.Handler(request)
 
@@ -735,28 +735,28 @@ func TestRouter_Put(t *testing.T) {
 			{
 				name:            "returns handler and empty params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodPut,
+				httpMethod:      http.MethodPut,
 				expectedHandler: dummyHandler,
 				expectedParams:  Params{},
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodGet,
+				httpMethod:      http.MethodGet,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodPost,
+				httpMethod:      http.MethodPost,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodDelete,
+				httpMethod:      http.MethodDelete,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
@@ -764,7 +764,7 @@ func TestRouter_Put(t *testing.T) {
 
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
-				request, _ := http.NewRequest(c.method, c.uri, nil)
+				request, _ := http.NewRequest(c.httpMethod, c.uri, nil)
 
 				h, _, params := router.Handler(request)
 
@@ -786,28 +786,28 @@ func TestRouter_Delete(t *testing.T) {
 			{
 				name:            "returns handler and empty params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodDelete,
+				httpMethod:      http.MethodDelete,
 				expectedHandler: dummyHandler,
 				expectedParams:  Params{},
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodGet,
+				httpMethod:      http.MethodGet,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodPut,
+				httpMethod:      http.MethodPut,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
 			{
 				name:            "returns nil handler and nil params",
 				uri:             newDummyURI("/products"),
-				method:          http.MethodPost,
+				httpMethod:      http.MethodPost,
 				expectedHandler: NotFoundHandler,
 				expectedParams:  nil,
 			},
@@ -815,7 +815,7 @@ func TestRouter_Delete(t *testing.T) {
 
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
-				request, _ := http.NewRequest(c.method, c.uri, nil)
+				request, _ := http.NewRequest(c.httpMethod, c.uri, nil)
 
 				h, _, params := router.Handler(request)
 
@@ -1207,7 +1207,7 @@ func checkTestResquestUsingHandler(t *testing.T, caller func(*namespace, string,
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			request, _ := http.NewRequest(c.method, c.uri, nil)
+			request, _ := http.NewRequest(c.httpMethod, c.uri, nil)
 
 			h, _, params := router.Handler(request)
 
@@ -1232,35 +1232,35 @@ func TestNamespace_Get(t *testing.T) {
 		{
 			name:            "returns handler and empty params",
 			uri:             newDummyURI("/media/images"),
-			method:          http.MethodGet,
+			httpMethod:      http.MethodGet,
 			expectedHandler: dummyHandler,
 			expectedParams:  Params{},
 		},
 		{
 			name:            "returns nil handler and nil params",
 			uri:             newDummyURI("/media/images"),
-			method:          http.MethodPost,
+			httpMethod:      http.MethodPost,
 			expectedHandler: NotFoundHandler,
 			expectedParams:  nil,
 		},
 		{
 			name:            "returns nil handler and nil params",
 			uri:             newDummyURI("/media/images"),
-			method:          http.MethodPut,
+			httpMethod:      http.MethodPut,
 			expectedHandler: NotFoundHandler,
 			expectedParams:  nil,
 		},
 		{
 			name:            "returns nil handler and nil params",
 			uri:             newDummyURI("/media/images"),
-			method:          http.MethodDelete,
+			httpMethod:      http.MethodDelete,
 			expectedHandler: NotFoundHandler,
 			expectedParams:  nil,
 		},
 		{
 			name:            "returns redirect handler and nil params",
 			uri:             newDummyURI("/media/images/"),
-			method:          http.MethodGet,
+			httpMethod:      http.MethodGet,
 			expectedHandler: RedirectHandler("/media/images", http.StatusMovedPermanently),
 			expectedParams:  nil,
 		},
@@ -1278,41 +1278,133 @@ func TestNamespace_Post(t *testing.T) {
 		{
 			name:            "returns handler and empty params",
 			uri:             newDummyURI("/media/images"),
-			method:          http.MethodPost,
+			httpMethod:      http.MethodPost,
 			expectedHandler: dummyHandler,
 			expectedParams:  Params{},
 		},
 		{
 			name:            "returns nil handler and nil params",
 			uri:             newDummyURI("/media/images"),
-			method:          http.MethodGet,
+			httpMethod:      http.MethodGet,
 			expectedHandler: NotFoundHandler,
 			expectedParams:  nil,
 		},
 		{
 			name:            "returns nil handler and nil params",
 			uri:             newDummyURI("/media/images"),
-			method:          http.MethodPut,
+			httpMethod:      http.MethodPut,
 			expectedHandler: NotFoundHandler,
 			expectedParams:  nil,
 		},
 		{
 			name:            "returns nil handler and nil params",
 			uri:             newDummyURI("/media/images"),
-			method:          http.MethodDelete,
+			httpMethod:      http.MethodDelete,
 			expectedHandler: NotFoundHandler,
 			expectedParams:  nil,
 		},
 		{
 			name:            "returns redirect handler and nil params",
 			uri:             newDummyURI("/media/images/"),
-			method:          http.MethodPost,
+			httpMethod:      http.MethodPost,
 			expectedHandler: RedirectHandler("/media/images", http.StatusMovedPermanently),
 			expectedParams:  nil,
 		},
 	}
 
 	checkTestResquestUsingHandler(t, func(n *namespace, p string, h Handler) { n.Post(p, h) }, "media", "/images", cases)
+}
+
+func TestNamespace_Put(t *testing.T) {
+	testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t, func(n *namespace, a any, h ...Handler) {
+		n.Put(a, h...)
+	}, MethodPut)
+
+	cases := []testResquestUsingHandler{
+		{
+			name:            "returns handler and empty params",
+			uri:             newDummyURI("/media/images"),
+			httpMethod:      http.MethodPut,
+			expectedHandler: dummyHandler,
+			expectedParams:  Params{},
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			httpMethod:      http.MethodPost,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			httpMethod:      http.MethodGet,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			httpMethod:      http.MethodDelete,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns redirect handler and nil params",
+			uri:             newDummyURI("/media/images/"),
+			httpMethod:      http.MethodPut,
+			expectedHandler: RedirectHandler("/media/images", http.StatusMovedPermanently),
+			expectedParams:  nil,
+		},
+	}
+
+	checkTestResquestUsingHandler(t, func(n *namespace, p string, h Handler) { n.Put(p, h) }, "media", "/images", cases)
+}
+
+func TestNamespace_Delete(t *testing.T) {
+	testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t, func(n *namespace, a any, h ...Handler) {
+		n.Delete(a, h...)
+	}, MethodDelete)
+
+	cases := []testResquestUsingHandler{
+		{
+			name:            "returns handler and empty params",
+			uri:             newDummyURI("/media/images"),
+			httpMethod:      http.MethodDelete,
+			expectedHandler: dummyHandler,
+			expectedParams:  Params{},
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			httpMethod:      http.MethodPost,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			httpMethod:      http.MethodGet,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			httpMethod:      http.MethodGet,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns redirect handler and nil params",
+			uri:             newDummyURI("/media/images/"),
+			httpMethod:      http.MethodDelete,
+			expectedHandler: RedirectHandler("/media/images", http.StatusMovedPermanently),
+			expectedParams:  nil,
+		},
+	}
+
+	checkTestResquestUsingHandler(t, func(n *namespace, p string, h Handler) { n.Delete(p, h) }, "media", "/images", cases)
 }
 
 var dummyMiddleware = &stubMiddleware{}
