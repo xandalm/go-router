@@ -60,7 +60,7 @@ func assertHandler(t testing.TB, got, want Handler) {
 	t.Helper()
 
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got handler %v, but want %v", got, want)
+		t.Fatalf("got handler %#v, but want %#v", got, want)
 	}
 }
 

@@ -324,12 +324,12 @@ func (ro *Router) Handler(r *http.Request) (h Handler, p string, params Params) 
 		return
 	}
 
-	if newPath, ok := ro.shouldRedirectToSlashPath(host, path); ok {
+	if newPath, ok := ro.shouldRedirectToSlashPath(host, path, r.Method); ok {
 		u := &url.URL{Path: newPath, RawQuery: r.URL.RawQuery}
 		return RedirectHandler(u.String(), http.StatusMovedPermanently), u.Path, nil
 	}
 
-	if newPath, ok := ro.shouldRedirectToUnslashPath(host, path); ok {
+	if newPath, ok := ro.shouldRedirectToUnslashPath(host, path, r.Method); ok {
 		u := &url.URL{Path: newPath, RawQuery: r.URL.RawQuery}
 		return RedirectHandler(u.String(), http.StatusMovedPermanently), u.Path, nil
 	}
@@ -372,7 +372,7 @@ func (ro *Router) handler(host, path, method string) (p string, h Handler, param
 	return e.pattern, h, params
 }
 
-func (ro *Router) shouldRedirectToUnslashPath(host, path string) (string, bool) {
+func (ro *Router) shouldRedirectToUnslashPath(host, path, method string) (string, bool) {
 	ro.mu.RLock()
 	defer ro.mu.RUnlock()
 
@@ -386,7 +386,19 @@ func (ro *Router) shouldRedirectToUnslashPath(host, path string) (string, bool) 
 		ps := c[:len(c)-1]
 		name, _ := parseNamespace(ps)
 		n, _ := closer(ro.ns, name)
-		if n != nil && n.eu != nil && n.eu.re.MatchString(ps) {
+		if n == nil {
+			continue
+		}
+		var entry *routerEntry = n.eu
+		if entry == nil {
+			continue
+		}
+		if _, ok := entry.mh[method]; !ok {
+			if _, ok := entry.mh[MethodAll]; !ok {
+				continue
+			}
+		}
+		if entry.re.MatchString(ps) {
 			return ps, true
 		}
 	}
@@ -395,7 +407,7 @@ func (ro *Router) shouldRedirectToUnslashPath(host, path string) (string, bool) 
 
 }
 
-func (ro *Router) shouldRedirectToSlashPath(host, path string) (string, bool) {
+func (ro *Router) shouldRedirectToSlashPath(host, path, method string) (string, bool) {
 	ro.mu.RLock()
 	defer ro.mu.RUnlock()
 
@@ -409,7 +421,19 @@ func (ro *Router) shouldRedirectToSlashPath(host, path string) (string, bool) {
 		ps := c + "/"
 		name, _ := parseNamespace(ps)
 		n, _ := closer(ro.ns, name)
-		if n != nil && n.es != nil && n.es.re.MatchString(ps) {
+		if n == nil {
+			continue
+		}
+		var entry *routerEntry = n.es
+		if entry == nil {
+			continue
+		}
+		if _, ok := entry.mh[method]; !ok {
+			if _, ok := entry.mh[MethodAll]; !ok {
+				continue
+			}
+		}
+		if entry.re.MatchString(ps) {
 			return ps, true
 		}
 	}
@@ -852,7 +876,7 @@ func (na *namespace) register(pattern string, handler Handler, method string) {
 	}
 }
 
-func (na *namespace) All(v any, handler ...Handler) {
+func (na *namespace) switchRegister(method string, v any, handler ...Handler) {
 	switch value := v.(type) {
 	case string:
 		if value == "" {
@@ -861,10 +885,20 @@ func (na *namespace) All(v any, handler ...Handler) {
 		if len(handler) == 0 {
 			panic(PanicMsgMissingHandler)
 		}
-		na.register(value, handler[0], MethodAll)
+		na.register(value, handler[0], method)
 	case Handler:
-		na.register("", value, MethodAll)
+		na.register("", value, method)
+	default:
+		panic("router: invalid type")
 	}
+}
+
+func (na *namespace) All(v any, handler ...Handler) {
+	na.switchRegister(MethodAll, v, handler...)
+}
+
+func (na *namespace) Get(v any, handler ...Handler) {
+	na.switchRegister(MethodGet, v, handler...)
 }
 
 // Register one or more middlewares to intercept requests.

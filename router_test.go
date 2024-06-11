@@ -458,6 +458,81 @@ func TestRouter_Handler(t *testing.T) {
 			assertParams(t, params, c.params)
 		}
 	})
+
+	t.Run("returns not found handler instead of redirect handler if the method is not registered", func(t *testing.T) {
+
+		testFn := func(caller func(r *Router, p string, h Handler), pattern string, path string, methods []string) {
+			router := NewRouter()
+			caller(router, pattern, dummyHandler)
+			for _, m := range methods {
+				request, _ := http.NewRequest(m, newDummyURI(path), nil)
+
+				h, pat, params := router.Handler(request)
+
+				assertHandler(t, h, NotFoundHandler)
+
+				if pat != "" {
+					t.Errorf("got pattern %q, but want empty string", pat)
+				}
+
+				assertParams(t, params, nil)
+			}
+		}
+
+		toTestFn := []struct {
+			fn      func(r *Router, p string, h Handler)
+			methods []string
+		}{
+			{
+				func(r *Router, p string, h Handler) {
+					r.Get(p, h)
+				},
+				[]string{MethodPost, MethodPut, MethodDelete},
+			},
+			{
+				func(r *Router, p string, h Handler) {
+					r.Post(p, h)
+				},
+				[]string{MethodGet, MethodPut, MethodDelete},
+			},
+			{
+				func(r *Router, p string, h Handler) {
+					r.Put(p, h)
+				},
+				[]string{MethodPost, MethodGet, MethodDelete},
+			},
+			{
+				func(r *Router, p string, h Handler) {
+					r.Delete(p, h)
+				},
+				[]string{MethodPost, MethodPut, MethodGet},
+			},
+		}
+
+		cases := []struct {
+			pattern, path string
+		}{
+			{
+				"/path",
+				"/path/",
+			},
+			{
+				"/path/",
+				"/path",
+			},
+		}
+
+		for _, c := range cases {
+			for _, tt := range toTestFn {
+				testFn(
+					tt.fn,
+					c.pattern,
+					c.path,
+					tt.methods,
+				)
+			}
+		}
+	})
 }
 
 type testResquestUsingHandler struct {
@@ -1020,8 +1095,7 @@ func TestNamespace_register(t *testing.T) {
 	}
 }
 
-func TestNamespace_All(t *testing.T) {
-
+func testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t *testing.T, caller func(*namespace, any, ...Handler)) {
 	type testCase struct {
 		name      string
 		namespace string
@@ -1068,7 +1142,7 @@ func TestNamespace_All(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			router := &Router{}
 			namespace := router.Namespace(c.namespace)
-			namespace.All(c.path, dummyHandler)
+			caller(namespace, c.path, dummyHandler)
 
 			for _, cc := range c.uriTests {
 				request, _ := http.NewRequest(http.MethodGet, cc.uri, nil)
@@ -1081,10 +1155,10 @@ func TestNamespace_All(t *testing.T) {
 		})
 	}
 
-	t.Run("able to add handler to the namespace path (without slash suffix)", func(t *testing.T) {
+	t.Run(`able to add handler avoiding bar (to "[NAMESPACE_PATH]" instead of "[NAMESPACE_PATH]/")`, func(t *testing.T) {
 		router := &Router{}
 		namespace := router.Namespace("users")
-		namespace.All(dummyHandler)
+		caller(namespace, dummyHandler)
 
 		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/users"), nil)
 
@@ -1106,7 +1180,7 @@ func TestNamespace_All(t *testing.T) {
 		}()
 		router := &Router{}
 		namespace := router.Namespace("users")
-		namespace.All("", dummyHandler)
+		caller(namespace, "", dummyHandler)
 	})
 
 	t.Run("panic when give no one handler", func(t *testing.T) {
@@ -1121,8 +1195,78 @@ func TestNamespace_All(t *testing.T) {
 		}()
 		router := &Router{}
 		namespace := router.Namespace("users")
-		namespace.All("/actives")
+		caller(namespace, "/actives")
 	})
+}
+
+func checkTestResquestUsingHandler(t *testing.T, n, p string, cases []testResquestUsingHandler) {
+
+	router := NewRouter()
+	namespace := router.Namespace(n)
+	namespace.Get(p, dummyHandler)
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			request, _ := http.NewRequest(c.method, c.uri, nil)
+
+			h, _, params := router.Handler(request)
+
+			assertHandler(t, h, c.expectedHandler)
+			assertParams(t, params, c.expectedParams)
+		})
+	}
+}
+
+func TestNamespace_All(t *testing.T) {
+	testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t, func(n *namespace, a any, h ...Handler) {
+		n.All(a, h...)
+	})
+}
+
+func TestNamespace_Get(t *testing.T) {
+	testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t, func(n *namespace, a any, h ...Handler) {
+		n.Get(a, h...)
+	})
+
+	cases := []testResquestUsingHandler{
+		{
+			name:            "returns handler and empty params",
+			uri:             newDummyURI("/media/images"),
+			method:          http.MethodGet,
+			expectedHandler: dummyHandler,
+			expectedParams:  Params{},
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			method:          http.MethodPost,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			method:          http.MethodPut,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			method:          http.MethodDelete,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns redirect handler and nil params",
+			uri:             newDummyURI("/media/images/"),
+			method:          http.MethodGet,
+			expectedHandler: RedirectHandler("/media/images", http.StatusMovedPermanently),
+			expectedParams:  nil,
+		},
+	}
+
+	checkTestResquestUsingHandler(t, "media", "/images", cases)
 }
 
 var dummyMiddleware = &stubMiddleware{}
