@@ -1095,7 +1095,7 @@ func TestNamespace_register(t *testing.T) {
 	}
 }
 
-func testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t *testing.T, caller func(*namespace, any, ...Handler)) {
+func testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t *testing.T, caller func(*namespace, any, ...Handler), method string) {
 	type testCase struct {
 		name      string
 		namespace string
@@ -1145,7 +1145,7 @@ func testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t *testing.T, caller
 			caller(namespace, c.path, dummyHandler)
 
 			for _, cc := range c.uriTests {
-				request, _ := http.NewRequest(http.MethodGet, cc.uri, nil)
+				request, _ := http.NewRequest(method, cc.uri, nil)
 
 				h, _, params := router.Handler(request)
 
@@ -1160,7 +1160,7 @@ func testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t *testing.T, caller
 		namespace := router.Namespace("users")
 		caller(namespace, dummyHandler)
 
-		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/users"), nil)
+		request, _ := http.NewRequest(method, newDummyURI("/users"), nil)
 
 		h, _, params := router.Handler(request)
 
@@ -1199,11 +1199,11 @@ func testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t *testing.T, caller
 	})
 }
 
-func checkTestResquestUsingHandler(t *testing.T, n, p string, cases []testResquestUsingHandler) {
+func checkTestResquestUsingHandler(t *testing.T, caller func(*namespace, string, Handler), n, p string, cases []testResquestUsingHandler) {
 
 	router := NewRouter()
 	namespace := router.Namespace(n)
-	namespace.Get(p, dummyHandler)
+	caller(namespace, p, dummyHandler)
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1220,13 +1220,13 @@ func checkTestResquestUsingHandler(t *testing.T, n, p string, cases []testResque
 func TestNamespace_All(t *testing.T) {
 	testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t, func(n *namespace, a any, h ...Handler) {
 		n.All(a, h...)
-	})
+	}, MethodGet)
 }
 
 func TestNamespace_Get(t *testing.T) {
 	testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t, func(n *namespace, a any, h ...Handler) {
 		n.Get(a, h...)
-	})
+	}, MethodGet)
 
 	cases := []testResquestUsingHandler{
 		{
@@ -1266,7 +1266,53 @@ func TestNamespace_Get(t *testing.T) {
 		},
 	}
 
-	checkTestResquestUsingHandler(t, "media", "/images", cases)
+	checkTestResquestUsingHandler(t, func(n *namespace, p string, h Handler) { n.Get(p, h) }, "media", "/images", cases)
+}
+
+func TestNamespace_Post(t *testing.T) {
+	testCommonCasesOnNamespace__All_Get_Post_Put_or_Delete(t, func(n *namespace, a any, h ...Handler) {
+		n.Post(a, h...)
+	}, MethodPost)
+
+	cases := []testResquestUsingHandler{
+		{
+			name:            "returns handler and empty params",
+			uri:             newDummyURI("/media/images"),
+			method:          http.MethodPost,
+			expectedHandler: dummyHandler,
+			expectedParams:  Params{},
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			method:          http.MethodGet,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			method:          http.MethodPut,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns nil handler and nil params",
+			uri:             newDummyURI("/media/images"),
+			method:          http.MethodDelete,
+			expectedHandler: NotFoundHandler,
+			expectedParams:  nil,
+		},
+		{
+			name:            "returns redirect handler and nil params",
+			uri:             newDummyURI("/media/images/"),
+			method:          http.MethodPost,
+			expectedHandler: RedirectHandler("/media/images", http.StatusMovedPermanently),
+			expectedParams:  nil,
+		},
+	}
+
+	checkTestResquestUsingHandler(t, func(n *namespace, p string, h Handler) { n.Post(p, h) }, "media", "/images", cases)
 }
 
 var dummyMiddleware = &stubMiddleware{}
