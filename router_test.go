@@ -15,7 +15,6 @@ var dummyHandler = &stubHandler{}
 
 func TestRouter_namespace(t *testing.T) {
 	t.Run("create a namespace and return it", func(t *testing.T) {
-		router := &Router{}
 
 		cases := []struct {
 			namespace, check string
@@ -25,9 +24,12 @@ func TestRouter_namespace(t *testing.T) {
 			{"images/{}", "images/{}"},
 			{"videos/{}/frame/{}", "videos/{}/frame/{}"},
 			{"path/{}/{}", "path/{}/{}"},
+			{"{}", "{}"},
+			{"{}/{}", "{}/{}"},
 		}
 
 		for _, c := range cases {
+			router := &Router{}
 			n := router.namespace(c.namespace)
 
 			assertRouterHasNamespace(t, router, c.check)
@@ -36,27 +38,6 @@ func TestRouter_namespace(t *testing.T) {
 			}
 		}
 	})
-	// t.Run("panic if the given namespace starts with param", func(t *testing.T) {
-	// 	router := &Router{}
-
-	// 	cases := []string{
-	// 		"{param}",
-	// 		"{param}/abc",
-	// 		"{param1}/{param2}",
-	// 	}
-
-	// 	for _, name := range cases {
-	// 		t.Run("for namespace name "+name, func(t *testing.T) {
-	// 			defer func() {
-	// 				r := recover()
-	// 				if r == nil || r != ErrNamespaceStartsWithParam {
-	// 					t.Errorf("didn't get expected panic, got %v", r)
-	// 				}
-	// 			}()
-	// 			router.namespace(name)
-	// 		})
-	// 	}
-	// })
 	t.Run("create a namespace in a corresponding prefix namespace", func(t *testing.T) {
 		router := &Router{}
 
@@ -68,6 +49,7 @@ func TestRouter_namespace(t *testing.T) {
 		}{
 			{"admin", "admin/users", "admin", "users"},
 			{"customers/{}", "customers/{}/addresses", "customers/{}", "addresses"},
+			{"{}", "{}/data", "{}", "data"},
 		}
 
 		for _, c := range cases {

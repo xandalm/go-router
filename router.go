@@ -69,6 +69,7 @@ func (rh *redirectHandler) ServeHTTP(w ResponseWriter, r *Request) {
 	http.Redirect(w, r.Request, rh.url, rh.code)
 }
 
+// Creates a redirect handler
 func RedirectHandler(url string, code int) Handler {
 	return &redirectHandler{url, code}
 }
@@ -185,10 +186,8 @@ func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, pa
 
 var paramsSeeker = regexp.MustCompile(`\{[^\/]+\}`)
 
-// This function trims extremities slashes(/) from the namespace,
-// then checks if the namespace starts with a param. If it
-// happens then it will panic.
-// Otherwise will replace params into generalized params
+// This function trims prefix and suffix bars from the namespace.
+// Also normalize the params names to be a generalized param.
 // As example, the path:
 //
 //	"/some/path/{PARAM_NAME}"
@@ -202,9 +201,6 @@ func parseNamespace(name string) (string, []string) {
 	name = strings.TrimPrefix(name, "/")
 	name = strings.TrimSuffix(name, "/")
 
-	// if regexp.MustCompile(`^\{[^\/]+\}`).MatchString(name) {
-	// 	panic(ErrNamespaceStartsWithParam)
-	// }
 	var params []string
 	name = paramsSeeker.ReplaceAllStringFunc(name, func(s string) string {
 		params = append(params, s)
@@ -223,8 +219,8 @@ type routerEntry struct {
 // Have similar characteristics, however Router brings the
 // possibility to handle params that can be exposed in patterns.
 //
-// One parameterized pattern can be registered with a it's name
-// rounded by brackets, that is /customers/{id}.
+// The pattern can have params, which are added with its name
+// rounded by brackets, like "/customers/{id}".
 type Router struct {
 	mu   sync.RWMutex
 	ns   map[string]*routerNamespace
@@ -240,7 +236,7 @@ func NewRouter() *Router {
 	}
 }
 
-// Dispatches the request to the handler whose pattern most closely matches the request URL.
+// Dispatches the request to the handler whose pattern matches the request URL.
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.RequestURI == "*" {
 		if r.ProtoAtLeast(1, 1) {
@@ -289,7 +285,7 @@ func (ro *Router) crossMiddlewares(w ResponseWriter, r *Request) error {
 
 // Returns the handler for the given request accordingly to the request characteristics
 // (r.Method, r.Host and r.URL.Path), it will never be nil. If the request path is not in
-// its canonical form, the result handler will be an handler that redirects to the canonical
+// its canonical form, the result handler will be a handler that redirects to the canonical
 // path.
 //
 // Handler also returns the registered pattern that matches the request, or will match, in
@@ -539,8 +535,8 @@ func (ro *Router) All(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodAll)
 }
 
-// Similar to All method, but this method get a handler as a func.
-// And wrap it, to act like a RouteHandler.
+// Similar to All method, but this method get a handler as a func
+// and wrap it, to act like a RouteHandler.
 func (ro *Router) AllFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, HandlerFunc(handler), MethodAll)
 }
@@ -550,8 +546,8 @@ func (ro *Router) Get(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodGet)
 }
 
-// Similar to Get method, but this method get a handler as a func.
-// And wrap it, to act like a RouteHandler.
+// Similar to Get method, but this method get a handler as a func
+// and wrap it, to act like a RouteHandler.
 func (ro *Router) GetFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodGet)
 }
@@ -561,8 +557,8 @@ func (ro *Router) Post(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodPost)
 }
 
-// Similar to Post method, but this method get a handler as a func.
-// And wrap it, to act like a RouteHandler.
+// Similar to Post method, but this method get a handler as a func
+// and wrap it, to act like a RouteHandler.
 func (ro *Router) PostFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodPost)
 }
@@ -572,8 +568,8 @@ func (ro *Router) Put(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodPut)
 }
 
-// Similar to Put method, but this method get a handler as a func.
-// And wrap it, to act like a RouteHandler.
+// Similar to Put method, but this method get a handler as a func
+// and wrap it, to act like a RouteHandler.
 func (ro *Router) PutFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodPut)
 }
@@ -583,8 +579,8 @@ func (ro *Router) Delete(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodDelete)
 }
 
-// Similar to Delete method, but this method get a handler as a func.
-// And wrap it, to act like a RouteHandler.
+// Similar to Delete method, but this method get a handler as a func
+// and wrap it, to act like a RouteHandler.
 func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodDelete)
 }
@@ -641,11 +637,10 @@ func (ro *Router) namespace(name string) *routerNamespace {
 //
 //	"api"
 //
-// Or a compound name (names separated by slashes):
+// Or a compound name (names separated by slash):
 //
 //	"api/v1/media"
 //
-// A param name is allowed if it's not the prefix of the given value.
 // The param will be transformed into generic param (closed brackets - {})
 //
 // Finally, returns the created namespace.
@@ -785,11 +780,10 @@ type namespace struct {
 //
 //	"api"
 //
-// Or a compound name (names separated by slashes):
+// Or a compound name (names separated by slash):
 //
 //	"api/v1/media"
 //
-// A param name is allowed if it's not the prefix of the given value.
 // The param will be transformed into generic param (closed brackets - {})
 //
 // Finally, returns the created namespace.
@@ -893,22 +887,41 @@ func (na *namespace) switchRegister(method string, v any, handler ...Handler) {
 	}
 }
 
+// Allow to register a handler able to handle to any request method that matches the pattern.
+// There are 3 ways.
+//
+// It's possible to register the handler to the namespace path + "/", like http&#58;//site.com/nspath/;
+//
+//	namespace.All("/", handler)
+//
+// Or to the namespace path without "/" at the end, like http&#58;//site.com/nspath
+//
+//	namespace.All(handler)
+//
+// Or to a path beyond the namespace path, where the addition path is given by a pattern (accepts params too),
+// like http&#58;//site.com/nspath/addition_path
+//
+//	namespace.All("/addition_path", handler) // namespace.All("/addition_path/{param}", handler)
 func (na *namespace) All(v any, handler ...Handler) {
 	na.switchRegister(MethodAll, v, handler...)
 }
 
+// Similar to the All(), but corresponds only to GET requests
 func (na *namespace) Get(v any, handler ...Handler) {
 	na.switchRegister(MethodGet, v, handler...)
 }
 
+// Similar to the All(), but corresponds only to POST requests
 func (na *namespace) Post(v any, handler ...Handler) {
 	na.switchRegister(MethodPost, v, handler...)
 }
 
+// Similar to the All(), but corresponds only to PUT requests
 func (na *namespace) Put(v any, handler ...Handler) {
 	na.switchRegister(MethodPut, v, handler...)
 }
 
+// Similar to the All(), but corresponds only to DELETE requests
 func (na *namespace) Delete(v any, handler ...Handler) {
 	na.switchRegister(MethodDelete, v, handler...)
 }
