@@ -1559,11 +1559,44 @@ func TestNamespace_Use(t *testing.T) {
 func TestRouter(t *testing.T) {
 
 	router := NewRouter()
-	router.Get("/greet", &mockHandler{
-		OnHandleFunc: func(w ResponseWriter, r *Request) {
-			fmt.Fprint(w, `Hello, Requester`)
-		},
+
+	t.Run(`can handle a request through the added endpoint`, func(t *testing.T) {
+		router.Get("/greet", &mockHandler{
+			OnHandleFunc: func(w ResponseWriter, r *Request) {
+				fmt.Fprint(w, `Hello, Requester`)
+			},
+		})
+		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/greet"), nil)
+		response := httptest.NewRecorder()
+
+		router.ServeHTTP(response, request)
+
+		assertStatus(t, response, http.StatusOK)
+		assertBody(t, response, `Hello, Requester`)
 	})
+
+	t.Run(`can create and return a namespace`, func(t *testing.T) {
+		ns := router.Namespace("api")
+
+		if ns == nil {
+			t.Fatal("didn't get the namespace")
+		}
+
+		t.Run(`can handle a request through the endpoint added by namespace`, func(t *testing.T) {
+			ns.AllFunc("/users/{id}", func(w ResponseWriter, r *Request) {
+				fmt.Fprint(w, r.Params()["id"])
+			})
+
+			request, _ := http.NewRequest(http.MethodGet, newDummyURI("/api/users/1"), nil)
+			response := httptest.NewRecorder()
+
+			router.ServeHTTP(response, request)
+
+			assertStatus(t, response, http.StatusOK)
+			assertBody(t, response, `1`)
+		})
+	})
+
 	router.Use("/admin", &mockMiddleware{
 		InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
 			if _, ok := r.Header["Authorization"]; !ok {
@@ -1576,16 +1609,6 @@ func TestRouter(t *testing.T) {
 		OnHandleFunc: func(w ResponseWriter, r *Request) {
 			fmt.Fprint(w, `[]`)
 		},
-	})
-
-	t.Run(`handle to GET "/greet" after add "/greet" on GET`, func(t *testing.T) {
-		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/greet"), nil)
-		response := httptest.NewRecorder()
-
-		router.ServeHTTP(response, request)
-
-		assertStatus(t, response, http.StatusOK)
-		assertBody(t, response, `Hello, Requester`)
 	})
 
 	t.Run("pass throught middleware test at /admin and return status 200", func(t *testing.T) {
@@ -1623,9 +1646,9 @@ func BenchmarkRouterMath(b *testing.B) {
 	r.All("/products/{id}/image.jpg", dummyHandler)
 	r.All("/admin", dummyHandler)
 	r.All("/admin/products/", dummyHandler)
-	r.All("/admin/products/create", dummyHandler)
-	r.All("/admin/products/update", dummyHandler)
-	r.All("/admin/products/delete", dummyHandler)
+	r.Post("/admin/products", dummyHandler)
+	r.Put("/admin/products", dummyHandler)
+	r.Delete("/admin/products", dummyHandler)
 
 	paths := []string{"/", "/notfound", "/admin/", "/admin/foo", "/contact", "/products",
 		"/products/", "/products/3/image.jpg"}

@@ -536,7 +536,7 @@ func (ro *Router) All(pattern string, handler Handler) {
 }
 
 // Similar to All method, but this method get a handler as a func
-// and wrap it, to act like a RouteHandler.
+// and wrap it, to act like a Handler.
 func (ro *Router) AllFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, HandlerFunc(handler), MethodAll)
 }
@@ -547,7 +547,7 @@ func (ro *Router) Get(pattern string, handler Handler) {
 }
 
 // Similar to Get method, but this method get a handler as a func
-// and wrap it, to act like a RouteHandler.
+// and wrap it, to act like a Handler.
 func (ro *Router) GetFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodGet)
 }
@@ -558,7 +558,7 @@ func (ro *Router) Post(pattern string, handler Handler) {
 }
 
 // Similar to Post method, but this method get a handler as a func
-// and wrap it, to act like a RouteHandler.
+// and wrap it, to act like a Handler.
 func (ro *Router) PostFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodPost)
 }
@@ -569,7 +569,7 @@ func (ro *Router) Put(pattern string, handler Handler) {
 }
 
 // Similar to Put method, but this method get a handler as a func
-// and wrap it, to act like a RouteHandler.
+// and wrap it, to act like a Handler.
 func (ro *Router) PutFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodPut)
 }
@@ -580,7 +580,7 @@ func (ro *Router) Delete(pattern string, handler Handler) {
 }
 
 // Similar to Delete method, but this method get a handler as a func
-// and wrap it, to act like a RouteHandler.
+// and wrap it, to act like a Handler.
 func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodDelete)
 }
@@ -887,6 +887,23 @@ func (na *namespace) switchRegister(method string, v any, handler ...Handler) {
 	}
 }
 
+func (na *namespace) switchRegisterFunc(method string, v any, handler ...HandlerFunc) {
+	switch value := v.(type) {
+	case string:
+		if value == "" {
+			panic(PanicMsgInvalidPattern)
+		}
+		if len(handler) == 0 {
+			panic(PanicMsgMissingHandler)
+		}
+		na.register(value, handler[0], method)
+	case HandlerFunc:
+		na.register("", value, method)
+	default:
+		panic("router: invalid type")
+	}
+}
+
 // Allow to register a handler able to handle to any request method that matches the pattern.
 // There are 3 ways.
 //
@@ -906,9 +923,19 @@ func (na *namespace) All(v any, handler ...Handler) {
 	na.switchRegister(MethodAll, v, handler...)
 }
 
+// Similar to All(), but this expect a func as handler
+func (na *namespace) AllFunc(v any, handler ...HandlerFunc) {
+	na.switchRegisterFunc(MethodAll, v, handler...)
+}
+
 // Similar to the All(), but corresponds only to GET requests
 func (na *namespace) Get(v any, handler ...Handler) {
 	na.switchRegister(MethodGet, v, handler...)
+}
+
+// Similar to Get(), but this expect a func as handler
+func (na *namespace) GetFunc(v any, handler ...HandlerFunc) {
+	na.switchRegisterFunc(MethodGet, v, handler...)
 }
 
 // Similar to the All(), but corresponds only to POST requests
@@ -916,14 +943,29 @@ func (na *namespace) Post(v any, handler ...Handler) {
 	na.switchRegister(MethodPost, v, handler...)
 }
 
+// Similar to Post(), but this expect a func as handler
+func (na *namespace) PostFunc(v any, handler ...HandlerFunc) {
+	na.switchRegisterFunc(MethodPost, v, handler...)
+}
+
 // Similar to the All(), but corresponds only to PUT requests
 func (na *namespace) Put(v any, handler ...Handler) {
 	na.switchRegister(MethodPut, v, handler...)
 }
 
+// Similar to Put(), but this expect a func as handler
+func (na *namespace) PutFunc(v any, handler ...HandlerFunc) {
+	na.switchRegisterFunc(MethodPut, v, handler...)
+}
+
 // Similar to the All(), but corresponds only to DELETE requests
 func (na *namespace) Delete(v any, handler ...Handler) {
 	na.switchRegister(MethodDelete, v, handler...)
+}
+
+// Similar to Delete(), but this expect a func as handler
+func (na *namespace) DeleteFunc(v any, handler ...HandlerFunc) {
+	na.switchRegisterFunc(MethodDelete, v, handler...)
 }
 
 // Register one or more middlewares to intercept requests.
