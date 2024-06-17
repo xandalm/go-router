@@ -52,6 +52,14 @@ func (meh *spyMiddlewareErrorHandler) Handle(w ResponseWriter, r *Request, e err
 	meh.calls++
 }
 
+type mockMiddlewareErrorHandler struct {
+	HandleFunc func(w ResponseWriter, r *Request, e error)
+}
+
+func (meh *mockMiddlewareErrorHandler) Handle(w ResponseWriter, r *Request, e error) {
+	meh.HandleFunc(w, r, e)
+}
+
 func newDummyURI(path string) string {
 	return "http://site.com" + path
 }

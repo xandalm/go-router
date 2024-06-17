@@ -1635,6 +1635,28 @@ func TestRouter(t *testing.T) {
 
 			assertStatus(t, res, http.StatusInternalServerError)
 		})
+
+		t.Run("add handle error middleware and returns custom info", func(t *testing.T) {
+			router.Use(&mockMiddlewareErrorHandler{
+				HandleFunc: func(w ResponseWriter, r *Request, e error) {
+					switch e.Error() {
+					case "Missing authorization in header":
+						w.WriteHeader(http.StatusBadRequest)
+						fmt.Fprint(w, e.Error())
+					default:
+						w.WriteHeader(http.StatusInternalServerError)
+					}
+				},
+			})
+
+			req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
+			res := httptest.NewRecorder()
+
+			router.ServeHTTP(res, req)
+
+			assertStatus(t, res, http.StatusBadRequest)
+			assertBody(t, res, "Missing authorization in header")
+		})
 	})
 }
 

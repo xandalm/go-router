@@ -219,6 +219,11 @@ type routerEntry struct {
 	mh      map[string]Handler
 }
 
+type mwError struct {
+	err   error
+	stack string
+}
+
 // Like to standard ServeMux, it's a HTTP request multiplexer.
 // Have similar characteristics, however Router brings the
 // possibility to handle params that can be exposed in patterns.
@@ -251,21 +256,23 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h, p, params := ro.Handler(r)
 	rr := &Request{params: params, Request: r}
-	if errors := ro.crossMiddlewares(p, w, rr); len(errors) > 0 {
+	var errors []mwError
+	if errors = ro.crossMiddlewares(p, w, rr); len(errors) > 0 {
+		err := errors[0]
 		if ro.meh == nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(errors[0])
+			json.NewEncoder(w).Encode(fmt.Sprintf("Middleware Error: %s\n%s", err.err, err.stack))
 		} else {
-			ro.meh.Handle(w, rr, errors[0])
+			ro.meh.Handle(w, rr, err.err)
 		}
 		return
 	}
 	h.ServeHTTP(w, rr)
 }
 
-func crossMiddlewaresLayer(path []string, ns *map[string]*routerNamespace, mw *[]Middleware, w ResponseWriter, r *Request) chan []error {
+func crossMiddlewaresLayer(path []string, ns *map[string]*routerNamespace, mw *[]Middleware, w ResponseWriter, r *Request) chan []mwError {
 	iCh := make(chan int, 1)
-	errs := []error{}
+	errs := []mwError{}
 
 	var l string // layer
 	if len(path) > 0 {
@@ -299,7 +306,7 @@ func crossMiddlewaresLayer(path []string, ns *map[string]*routerNamespace, mw *[
 										}
 										return false
 									})
-									errs = append(errs, fmt.Errorf("Middleware Error: %s\n%s", e[0], string(stack[idx+1:])))
+									errs = append(errs, mwError{e[0], string(stack[idx+1:])})
 								}
 							},
 						),
@@ -322,12 +329,12 @@ func crossMiddlewaresLayer(path []string, ns *map[string]*routerNamespace, mw *[
 			<-crossMiddlewaresLayer(path[1:], &fwd.ns, &fwd.mws, w, r)...,
 		)
 	}
-	ch := make(chan []error, 1)
+	ch := make(chan []mwError, 1)
 	ch <- errs
 	return ch
 }
 
-func (ro *Router) crossMiddlewares(p string, w ResponseWriter, r *Request) []error {
+func (ro *Router) crossMiddlewares(p string, w ResponseWriter, r *Request) []mwError {
 	p = strings.TrimPrefix(p, "/")
 	p = strings.TrimSuffix(p, "/")
 
