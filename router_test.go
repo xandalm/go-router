@@ -1494,7 +1494,7 @@ func TestRouter_Use(t *testing.T) {
 		}
 	})
 
-	t.Run("create a middleware error handler", func(t *testing.T) {
+	t.Run("add a middleware error handler", func(t *testing.T) {
 		r := NewRouter()
 
 		m := &spyMiddlewareErrorHandler{}
@@ -1597,40 +1597,45 @@ func TestRouter(t *testing.T) {
 		})
 	})
 
-	router.Use("/admin", &mockMiddleware{
-		InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
-			if _, ok := r.Header["Authorization"]; !ok {
-				panic("missing Authorization header")
-			}
-			next()
-		},
+	t.Run("add middleware to specific path", func(t *testing.T) {
+		router.Use("/admin", &mockMiddleware{
+			InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+				if _, ok := r.Header["Authorization"]; !ok {
+					next(errors.New("Missing authorization in header"))
+					return
+				}
+				next()
+			},
+		})
+
+		router.Get("/admin/users", &mockHandler{
+			OnHandleFunc: func(w ResponseWriter, r *Request) {
+				fmt.Fprint(w, `[]`)
+			},
+		})
+
+		t.Run("pass through middleware and return status 200", func(t *testing.T) {
+
+			req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
+			req.Header.Add("Authorization", "[Auth Token]")
+			res := httptest.NewRecorder()
+
+			router.ServeHTTP(res, req)
+
+			assertStatus(t, res, http.StatusOK)
+			assertBody(t, res, `[]`)
+		})
+
+		t.Run("cause error on middleware and return status 500", func(t *testing.T) {
+
+			req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
+			res := httptest.NewRecorder()
+
+			router.ServeHTTP(res, req)
+
+			assertStatus(t, res, http.StatusInternalServerError)
+		})
 	})
-	router.Get("/admin/users", &mockHandler{
-		OnHandleFunc: func(w ResponseWriter, r *Request) {
-			fmt.Fprint(w, `[]`)
-		},
-	})
-
-	t.Run("pass throught middleware test at /admin and return status 200", func(t *testing.T) {
-
-		req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
-		req.Header.Add("Authorization", "[Auth Token]")
-		res := httptest.NewRecorder()
-
-		router.ServeHTTP(res, req)
-
-		assertStatus(t, res, http.StatusOK)
-	})
-
-	// t.Run("the middleware at /admin must interrupt the request and return status 401", func(t *testing.T) {
-
-	// 	req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
-	// 	res := httptest.NewRecorder()
-
-	// 	router.ServeHTTP(res, req)
-
-	// 	assertStatus(t, res, http.StatusUnauthorized)
-	// })
 }
 
 func BenchmarkRouterMath(b *testing.B) {

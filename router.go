@@ -1,11 +1,15 @@
 package router
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"path"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"sync"
 )
@@ -245,42 +249,90 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	h, _, params := ro.Handler(r)
+	h, p, params := ro.Handler(r)
 	rr := &Request{params: params, Request: r}
-	if err := ro.crossMiddlewares(w, rr); err != nil {
-		if ro.meh != nil {
-			ro.meh.Handle(w, rr, err)
+	if errors := ro.crossMiddlewares(p, w, rr); len(errors) > 0 {
+		if ro.meh == nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(errors[0])
+		} else {
+			ro.meh.Handle(w, rr, errors[0])
 		}
 		return
 	}
 	h.ServeHTTP(w, rr)
 }
 
-func (ro *Router) crossMiddlewares(w ResponseWriter, r *Request) error {
-	ch := make(chan int, 1)
-	chErr := make(chan error, 1)
+func crossMiddlewaresLayer(path []string, ns *map[string]*routerNamespace, mw *[]Middleware, w ResponseWriter, r *Request) chan []error {
+	iCh := make(chan int, 1)
+	errs := []error{}
 
-	size := len(ro.mws)
-	ch <- 0
-	for {
-		select {
-		case idx := <-ch:
-			if idx >= size {
-				return nil
-			}
-			ro.mws[idx].Intercept(w, r, NextMiddlewareCaller(func(e ...error) {
-				if len(e) > 0 {
-					chErr <- e[0]
-					return
+	var l string // layer
+	if len(path) > 0 {
+		l = path[0]
+	}
+
+	if size := len(*mw); size > 0 {
+		iCh <- 0
+		for loop := true; loop; {
+			select {
+			case idx := <-iCh:
+				if idx >= size {
+					loop = false
+				} else {
+					proceed := new(bool)
+					(*mw)[idx].Intercept(
+						w,
+						r,
+						NextMiddlewareCaller(
+							func(e ...error) {
+								*proceed = true
+								if len(e) > 0 {
+									stack := debug.Stack()
+									c := new(int)
+									idx := bytes.IndexFunc(stack, func(r rune) bool {
+										if r == '\n' {
+											(*c)++
+										}
+										if *c == 5 {
+											return true
+										}
+										return false
+									})
+									errs = append(errs, fmt.Errorf("Middleware Error: %s\n%s", e[0], string(stack[idx+1:])))
+								}
+							},
+						),
+					)
+					if len(errs) > 0 {
+						loop = false
+					} else if *proceed {
+						iCh <- idx + 1
+					}
 				}
-				ch <- (idx + 1)
-			}))
-		case err := <-chErr:
-			return err
-		case <-r.Context().Done():
-			return nil
+			case <-r.Context().Done():
+				loop = false
+			}
 		}
 	}
+	close(iCh)
+	if fwd, ok := (*ns)[l]; ok {
+		errs = append(
+			errs,
+			<-crossMiddlewaresLayer(path[1:], &fwd.ns, &fwd.mws, w, r)...,
+		)
+	}
+	ch := make(chan []error, 1)
+	ch <- errs
+	return ch
+}
+
+func (ro *Router) crossMiddlewares(p string, w ResponseWriter, r *Request) []error {
+	p = strings.TrimPrefix(p, "/")
+	p = strings.TrimSuffix(p, "/")
+
+	errors := <-crossMiddlewaresLayer(strings.Split(p, "/"), &ro.ns, &ro.mws, w, r)
+	return errors
 }
 
 // Returns the handler for the given request accordingly to the request characteristics
