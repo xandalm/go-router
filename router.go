@@ -744,16 +744,10 @@ func (ro *Router) Namespace(name string) *namespace {
 //
 //	router.Use("/path", middleware) // router.Use("/path", middleware1, middleware2,...)
 func (ro *Router) Use(v any, mws ...Middleware) {
+	ro.mu.Lock()
+	defer ro.mu.Unlock()
 
-	switch got := v.(type) {
-	case MiddlewareErrorHandler:
-		ro.addMiddlewareErrorHandler(got)
-	case string:
-		ro.addMiddlewareOnPath(got, mws...)
-	case Middleware:
-		mws = append([]Middleware{got}, mws...)
-		ro.addMiddlewareOnRouter(mws...)
-	}
+	ro.use(v, mws...)
 }
 
 // Similar to Use method, but all the given middlewares must be a func.
@@ -764,45 +758,37 @@ func (ro *Router) Use(v any, mws ...Middleware) {
 // The MiddlewareErrorHandler must be a function with the signature
 // equal to func(ResponseWriter, *Request, error).
 func (ro *Router) UseFunc(v any, mws ...func(ResponseWriter, *Request, NextMiddlewareCaller)) {
+	ro.mu.Lock()
+	defer ro.mu.Unlock()
 
+	var arg1 any
 	switch got := v.(type) {
-	case func(ResponseWriter, *Request, error):
-		ro.addMiddlewareErrorHandler(MiddlewareErrorHandlerFunc(got))
 	case string:
-		_mws := []Middleware{}
-		for i := 0; i < len(mws); i++ {
-			_mws = append(_mws, Middleware(MiddlewareFunc(mws[i])))
-		}
-		ro.addMiddlewareOnPath(got, _mws...)
+		arg1 = got
 	case func(ResponseWriter, *Request, NextMiddlewareCaller):
-		_mws := []Middleware{Middleware(MiddlewareFunc(got))}
-		for i := 0; i < len(mws); i++ {
-			_mws = append(_mws, Middleware(MiddlewareFunc(mws[i])))
-		}
-		ro.addMiddlewareOnRouter(_mws...)
+		arg1 = MiddlewareFunc(got)
+	case func(ResponseWriter, *Request, error):
+		arg1 = MiddlewareErrorHandlerFunc(got)
 	}
+
+	_mws := []Middleware{}
+	for i := 0; i < len(mws); i++ {
+		_mws = append(_mws, MiddlewareFunc(mws[i]))
+	}
+	ro.use(arg1, _mws...)
 }
 
-func (ro *Router) addMiddlewareOnRouter(mws ...Middleware) {
-	ro.mu.Lock()
-	defer ro.mu.Unlock()
-
-	ro.mws = append(ro.mws, mws...)
-}
-
-func (ro *Router) addMiddlewareOnPath(path string, mws ...Middleware) {
-	ro.mu.Lock()
-	defer ro.mu.Unlock()
-
-	n := ro.namespace(path)
-	n.mws = append(n.mws, mws...)
-}
-
-func (ro *Router) addMiddlewareErrorHandler(meh MiddlewareErrorHandler) {
-	ro.mu.Lock()
-	defer ro.mu.Unlock()
-
-	ro.meh = meh
+func (ro *Router) use(v any, mws ...Middleware) {
+	switch got := v.(type) {
+	case MiddlewareErrorHandler:
+		ro.meh = got
+	case string:
+		n := ro.namespace(got)
+		n.mws = append(n.mws, mws...)
+	case Middleware:
+		mws = append([]Middleware{got}, mws...)
+		ro.mws = append(ro.mws, mws...)
+	}
 }
 
 type routerNamespace struct {
@@ -1071,33 +1057,58 @@ func (na *namespace) DeleteFunc(v any, handler ...HandlerFunc) {
 }
 
 // Register one or more middlewares to intercept requests.
-// These middlewares will be registered in the namespace.
-func (na *namespace) Use(v any, mw ...Middleware) {
+// These middlewares can be registered in the namespace itself,
+// or in the given path (advanced namespace).
+//
+// To register middleware in the namespace, just:
+//
+//	namespace.Use(middleware) // namespace.Use(middleware1, ...) for 2+ middlewares
+//
+// To register middleware into path:
+//
+//	namespace.Use("/path", middleware) // namespace.Use("/path", middleware1, ...) for 2= middlewares
+func (na *namespace) Use(v any, mws ...Middleware) {
 	n := na.n
 	r := n.r
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	na.use(v, mws...)
+}
+
+// Similar to Use method, but all the given middlewares must be a func.
+//
+// A common middleware must be a function with signature equal to
+// func(ResponseWriter, *Request, NextMiddlewareCaller).
+func (na *namespace) UseFunc(v any, mws ...func(ResponseWriter, *Request, NextMiddlewareCaller)) {
+	n := na.n
+	r := n.r
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var arg1 any
+	switch got := v.(type) {
+	case string:
+		arg1 = got
+	case func(ResponseWriter, *Request, NextMiddlewareCaller):
+		arg1 = MiddlewareFunc(got)
+	}
+	_mws := []Middleware{}
+	for i := 0; i < len(mws); i++ {
+		_mws = append(_mws, MiddlewareFunc(mws[i]))
+	}
+
+	na.use(arg1, _mws...)
+}
+
+func (na *namespace) use(v any, mws ...Middleware) {
+	n := na.n
 	switch got := v.(type) {
 	case string:
 		path := strings.TrimPrefix(got, "/")
 		n = na.namespace(path).n
 	case Middleware:
-		mw = append([]Middleware{got}, mw...)
+		mws = append([]Middleware{got}, mws...)
 	}
-	n.mws = append(n.mws, mw...)
-}
-
-func (na *namespace) UseFunc(mw ...func(ResponseWriter, *Request, NextMiddlewareCaller)) {
-	n := na.n
-	r := n.r
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	_mw := []Middleware{}
-	for i := 0; i < len(mw); i++ {
-		_mw = append(_mw, Middleware(MiddlewareFunc(mw[i])))
-	}
-
-	n.mws = append(n.mws, _mw...)
+	n.mws = append(n.mws, mws...)
 }
