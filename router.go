@@ -30,6 +30,8 @@ const (
 	PanicMsgEmptyHandler        = "router: nil handler"
 	PanicMsgMissingHandler      = "router: missing handler"
 	PanicMsgEndpointDuplication = "router: endpoint duplication"
+	PanicMsgIncompatibleArgType = "router: there's a incompatible argumment type"
+	PanicMsgMissingMiddleware   = "router: missing middleware"
 )
 
 type ResponseWriter http.ResponseWriter
@@ -783,11 +785,19 @@ func (ro *Router) use(v any, mws ...Middleware) {
 	case MiddlewareErrorHandler:
 		ro.meh = got
 	case string:
+		if got == "" {
+			panic(PanicMsgInvalidPattern)
+		}
+		if len(mws) == 0 {
+			panic(PanicMsgMissingMiddleware)
+		}
 		n := ro.namespace(got)
 		n.mws = append(n.mws, mws...)
 	case Middleware:
 		mws = append([]Middleware{got}, mws...)
 		ro.mws = append(ro.mws, mws...)
+	default:
+		panic(PanicMsgIncompatibleArgType)
 	}
 }
 
@@ -971,25 +981,16 @@ func (na *namespace) switchRegister(method string, v any, handler ...Handler) {
 	case Handler:
 		na.register("", value, method)
 	default:
-		panic("router: invalid type")
+		panic(PanicMsgIncompatibleArgType)
 	}
 }
 
-func (na *namespace) switchRegisterFunc(method string, v any, handler ...HandlerFunc) {
-	switch value := v.(type) {
-	case string:
-		if value == "" {
-			panic(PanicMsgInvalidPattern)
-		}
-		if len(handler) == 0 {
-			panic(PanicMsgMissingHandler)
-		}
-		na.register(value, handler[0], method)
-	case HandlerFunc:
-		na.register("", value, method)
-	default:
-		panic("router: invalid type")
+func func2Handler(f ...func(ResponseWriter, *Request)) []Handler {
+	hds := []Handler{}
+	for i := 0; i < len(f); i++ {
+		hds = append(hds, HandlerFunc(f[i]))
 	}
+	return hds
 }
 
 // Allow to register a handler able to handle to any request method that matches the pattern.
@@ -1012,8 +1013,8 @@ func (na *namespace) All(v any, handler ...Handler) {
 }
 
 // Similar to All(), but this expect a func as handler
-func (na *namespace) AllFunc(v any, handler ...HandlerFunc) {
-	na.switchRegisterFunc(MethodAll, v, handler...)
+func (na *namespace) AllFunc(v any, handler ...func(ResponseWriter, *Request)) {
+	na.switchRegister(MethodAll, v, func2Handler(handler...)...)
 }
 
 // Similar to the All(), but corresponds only to GET requests
@@ -1022,8 +1023,8 @@ func (na *namespace) Get(v any, handler ...Handler) {
 }
 
 // Similar to Get(), but this expect a func as handler
-func (na *namespace) GetFunc(v any, handler ...HandlerFunc) {
-	na.switchRegisterFunc(MethodGet, v, handler...)
+func (na *namespace) GetFunc(v any, handler ...func(ResponseWriter, *Request)) {
+	na.switchRegister(MethodGet, v, func2Handler(handler...)...)
 }
 
 // Similar to the All(), but corresponds only to POST requests
@@ -1032,8 +1033,8 @@ func (na *namespace) Post(v any, handler ...Handler) {
 }
 
 // Similar to Post(), but this expect a func as handler
-func (na *namespace) PostFunc(v any, handler ...HandlerFunc) {
-	na.switchRegisterFunc(MethodPost, v, handler...)
+func (na *namespace) PostFunc(v any, handler ...func(ResponseWriter, *Request)) {
+	na.switchRegister(MethodPost, v, func2Handler(handler...)...)
 }
 
 // Similar to the All(), but corresponds only to PUT requests
@@ -1042,8 +1043,8 @@ func (na *namespace) Put(v any, handler ...Handler) {
 }
 
 // Similar to Put(), but this expect a func as handler
-func (na *namespace) PutFunc(v any, handler ...HandlerFunc) {
-	na.switchRegisterFunc(MethodPut, v, handler...)
+func (na *namespace) PutFunc(v any, handler ...func(ResponseWriter, *Request)) {
+	na.switchRegister(MethodPut, v, func2Handler(handler...)...)
 }
 
 // Similar to the All(), but corresponds only to DELETE requests
@@ -1052,8 +1053,8 @@ func (na *namespace) Delete(v any, handler ...Handler) {
 }
 
 // Similar to Delete(), but this expect a func as handler
-func (na *namespace) DeleteFunc(v any, handler ...HandlerFunc) {
-	na.switchRegisterFunc(MethodDelete, v, handler...)
+func (na *namespace) DeleteFunc(v any, handler ...func(ResponseWriter, *Request)) {
+	na.switchRegister(MethodDelete, v, func2Handler(handler...)...)
 }
 
 // Register one or more middlewares to intercept requests.
@@ -1105,10 +1106,18 @@ func (na *namespace) use(v any, mws ...Middleware) {
 	n := na.n
 	switch got := v.(type) {
 	case string:
+		if got == "" {
+			panic(PanicMsgInvalidPattern)
+		}
+		if len(mws) == 0 {
+			panic(PanicMsgMissingMiddleware)
+		}
 		path := strings.TrimPrefix(got, "/")
 		n = na.namespace(path).n
 	case Middleware:
 		mws = append([]Middleware{got}, mws...)
+	default:
+		panic(PanicMsgIncompatibleArgType)
 	}
 	n.mws = append(n.mws, mws...)
 }
