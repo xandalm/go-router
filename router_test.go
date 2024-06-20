@@ -3,6 +3,7 @@ package router
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -1472,7 +1473,7 @@ func TestRouter_Use(t *testing.T) {
 		}
 	})
 
-	t.Run("able to add middleware to a specific namespace accordingly to pattern/path", func(t *testing.T) {
+	t.Run("able to add middleware to a specific path", func(t *testing.T) {
 		r := NewRouter()
 
 		r.Use("/path", dummyMiddleware)
@@ -1484,7 +1485,7 @@ func TestRouter_Use(t *testing.T) {
 		n := r.Namespace("path").n
 
 		if len(n.mws) != 1 {
-			t.Fatalf("expected to get 1 middleware in the namespace, but get %d", len(n.mws))
+			t.Fatalf("expected to get 1 middleware, but get %d", len(n.mws))
 		}
 
 		got := n.mws[0].(*stubMiddleware)
@@ -1520,6 +1521,49 @@ func TestRouter_Use(t *testing.T) {
 
 			if m.calls != 1 {
 				t.Errorf("didn't handle with middleware error properly")
+			}
+		})
+	})
+
+	t.Run("UseFunc able to add func as middleware", func(t *testing.T) {
+		r := NewRouter()
+
+		dummyMiddlewareFunc := func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {}
+		dummyMiddlewareErrorHandlerFunc := func(w ResponseWriter, r *Request, err error) {}
+
+		t.Run("adding to router", func(t *testing.T) {
+
+			r.UseFunc(dummyMiddlewareFunc)
+
+			got := reflect.ValueOf(r.mws[0]).Pointer()
+			want := reflect.ValueOf(dummyMiddlewareFunc).Pointer()
+
+			if got != want {
+				t.Errorf("got %#v, but want %#v", got, want)
+			}
+
+		})
+		t.Run("adding to router path", func(t *testing.T) {
+
+			r.UseFunc("/api", dummyMiddlewareFunc)
+
+			got := reflect.ValueOf(r.mws[0]).Pointer()
+			want := reflect.ValueOf(dummyMiddlewareFunc).Pointer()
+
+			if got != want {
+				t.Errorf("got %#v, but want %#v", got, want)
+			}
+
+		})
+		t.Run("adding middleware error handler", func(t *testing.T) {
+
+			r.UseFunc(dummyMiddlewareErrorHandlerFunc)
+
+			got := reflect.ValueOf(r.meh).Pointer()
+			want := reflect.ValueOf(dummyMiddlewareErrorHandlerFunc).Pointer()
+
+			if got != want {
+				t.Errorf("got %#v, but want %#v", got, want)
 			}
 		})
 	})
@@ -1560,12 +1604,70 @@ func TestRouter(t *testing.T) {
 
 	router := NewRouter()
 
-	t.Run(`can handle a request through the added endpoint`, func(t *testing.T) {
-		router.Get("/greet", &mockHandler{
-			OnHandleFunc: func(w ResponseWriter, r *Request) {
-				fmt.Fprint(w, `Hello, Requester`)
-			},
-		})
+	router.Get("/greet", &mockHandler{
+		OnHandleFunc: func(w ResponseWriter, r *Request) {
+			fmt.Fprint(w, `Hello, Requester`)
+		},
+	})
+
+	ns := router.Namespace("api")
+
+	ns.Use(&mockMiddleware{
+		InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+			if r.Method != http.MethodPost {
+				next()
+				return
+			}
+			if r.Header.Get("Content-Type") == "" {
+				next(errors.New("Missing content-type in header"))
+				return
+			}
+			next()
+		},
+	})
+
+	ns.GetFunc("/users/{id}", func(w ResponseWriter, r *Request) {
+		fmt.Fprint(w, r.Params()["id"])
+	})
+
+	ns.PostFunc("/users/{id}", func(w ResponseWriter, r *Request) {
+		payload, _ := io.ReadAll(r.Body)
+		fmt.Fprint(w, string(payload))
+	})
+
+	if ns == nil {
+		t.Fatal("didn't get the namespace")
+	}
+
+	router.Use("/admin", &mockMiddleware{
+		InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+			if _, ok := r.Header["Authorization"]; !ok {
+				next(errors.New("Missing authorization in header"))
+				return
+			}
+			next()
+		},
+	})
+
+	router.Get("/admin/users", &mockHandler{
+		OnHandleFunc: func(w ResponseWriter, r *Request) {
+			fmt.Fprint(w, `[]`)
+		},
+	})
+
+	router.Use(&mockMiddlewareErrorHandler{
+		HandleFunc: func(w ResponseWriter, r *Request, e error) {
+			switch e.Error() {
+			case "Missing authorization in header", "Missing content-type in header":
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w, e.Error())
+			default:
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		},
+	})
+
+	t.Run(`GET /greet returns status 200 and expected body`, func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/greet"), nil)
 		response := httptest.NewRecorder()
 
@@ -1575,88 +1677,46 @@ func TestRouter(t *testing.T) {
 		assertBody(t, response, `Hello, Requester`)
 	})
 
-	t.Run(`can create and return a namespace`, func(t *testing.T) {
-		ns := router.Namespace("api")
+	t.Run(`GET /api/users/1 returns status 200 and expected body`, func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, newDummyURI("/api/users/1"), nil)
+		response := httptest.NewRecorder()
 
-		if ns == nil {
-			t.Fatal("didn't get the namespace")
-		}
+		router.ServeHTTP(response, request)
 
-		t.Run(`can handle a request through the endpoint added by namespace`, func(t *testing.T) {
-			ns.AllFunc("/users/{id}", func(w ResponseWriter, r *Request) {
-				fmt.Fprint(w, r.Params()["id"])
-			})
-
-			request, _ := http.NewRequest(http.MethodGet, newDummyURI("/api/users/1"), nil)
-			response := httptest.NewRecorder()
-
-			router.ServeHTTP(response, request)
-
-			assertStatus(t, response, http.StatusOK)
-			assertBody(t, response, `1`)
-		})
+		assertStatus(t, response, http.StatusOK)
+		assertBody(t, response, `1`)
 	})
 
-	t.Run("add middleware to specific path", func(t *testing.T) {
-		router.Use("/admin", &mockMiddleware{
-			InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
-				if _, ok := r.Header["Authorization"]; !ok {
-					next(errors.New("Missing authorization in header"))
-					return
-				}
-				next()
-			},
-		})
+	t.Run("GET /admin/users returns status 200 and expected body", func(t *testing.T) {
 
-		router.Get("/admin/users", &mockHandler{
-			OnHandleFunc: func(w ResponseWriter, r *Request) {
-				fmt.Fprint(w, `[]`)
-			},
-		})
+		req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
+		req.Header.Add("Authorization", "[Auth Token]")
+		res := httptest.NewRecorder()
 
-		t.Run("pass through middleware and return status 200", func(t *testing.T) {
+		router.ServeHTTP(res, req)
 
-			req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
-			req.Header.Add("Authorization", "[Auth Token]")
-			res := httptest.NewRecorder()
+		assertStatus(t, res, http.StatusOK)
+		assertBody(t, res, `[]`)
+	})
 
-			router.ServeHTTP(res, req)
+	t.Run("GET /admin/users returns status 400 and expected body", func(t *testing.T) {
+		req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
+		res := httptest.NewRecorder()
 
-			assertStatus(t, res, http.StatusOK)
-			assertBody(t, res, `[]`)
-		})
+		router.ServeHTTP(res, req)
 
-		t.Run("cause error on middleware and return status 500", func(t *testing.T) {
+		assertStatus(t, res, http.StatusBadRequest)
+		assertBody(t, res, "Missing authorization in header")
+	})
 
-			req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
-			res := httptest.NewRecorder()
+	t.Run("POST /api/users/3 returns status 400 because middleware treatment", func(t *testing.T) {
+		req, _ := http.NewRequest(MethodPost, newDummyURI("/api/users/3"), nil)
+		res := httptest.NewRecorder()
 
-			router.ServeHTTP(res, req)
+		router.ServeHTTP(res, req)
 
-			assertStatus(t, res, http.StatusInternalServerError)
-		})
-
-		t.Run("add handle error middleware and returns custom info", func(t *testing.T) {
-			router.Use(&mockMiddlewareErrorHandler{
-				HandleFunc: func(w ResponseWriter, r *Request, e error) {
-					switch e.Error() {
-					case "Missing authorization in header":
-						w.WriteHeader(http.StatusBadRequest)
-						fmt.Fprint(w, e.Error())
-					default:
-						w.WriteHeader(http.StatusInternalServerError)
-					}
-				},
-			})
-
-			req, _ := http.NewRequest(MethodGet, newDummyURI("/admin/users"), nil)
-			res := httptest.NewRecorder()
-
-			router.ServeHTTP(res, req)
-
-			assertStatus(t, res, http.StatusBadRequest)
-			assertBody(t, res, "Missing authorization in header")
-		})
+		assertStatus(t, res, http.StatusBadRequest)
+		assertBody(t, res, "Missing content-type in header")
 	})
 }
 

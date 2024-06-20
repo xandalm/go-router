@@ -48,6 +48,18 @@ type MiddlewareErrorHandler interface {
 	Handle(ResponseWriter, *Request, error)
 }
 
+type MiddlewareFunc func(ResponseWriter, *Request, NextMiddlewareCaller)
+
+func (f MiddlewareFunc) Intercept(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
+	f(w, r, next)
+}
+
+type MiddlewareErrorHandlerFunc func(ResponseWriter, *Request, error)
+
+func (f MiddlewareErrorHandlerFunc) Handle(w ResponseWriter, r *Request, err error) {
+	f(w, r, err)
+}
+
 // An Adapter to allow the use of functions as HTTP handlers.
 type HandlerFunc func(ResponseWriter, *Request)
 
@@ -741,6 +753,33 @@ func (ro *Router) Use(v any, mws ...Middleware) {
 	case Middleware:
 		mws = append([]Middleware{got}, mws...)
 		ro.addMiddlewareOnRouter(mws...)
+	}
+}
+
+// Similar to Use method, but all the given middlewares must be a func.
+//
+// A common middleware must be a function with signature equal to
+// func(ResponseWriter, *Request, NextMiddlewareCaller).
+//
+// The MiddlewareErrorHandler must be a function with the signature
+// equal to func(ResponseWriter, *Request, error).
+func (ro *Router) UseFunc(v any, mws ...func(ResponseWriter, *Request, NextMiddlewareCaller)) {
+
+	switch got := v.(type) {
+	case func(ResponseWriter, *Request, error):
+		ro.addMiddlewareErrorHandler(MiddlewareErrorHandlerFunc(got))
+	case string:
+		_mws := []Middleware{}
+		for i := 0; i < len(mws); i++ {
+			_mws = append(_mws, Middleware(MiddlewareFunc(mws[i])))
+		}
+		ro.addMiddlewareOnPath(got, _mws...)
+	case func(ResponseWriter, *Request, NextMiddlewareCaller):
+		_mws := []Middleware{Middleware(MiddlewareFunc(got))}
+		for i := 0; i < len(mws); i++ {
+			_mws = append(_mws, Middleware(MiddlewareFunc(mws[i])))
+		}
+		ro.addMiddlewareOnRouter(_mws...)
 	}
 }
 
