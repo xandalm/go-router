@@ -1076,3 +1076,17 @@ func (na *namespace) Use(mw ...Middleware) {
 
 	n.mws = append(n.mws, mw...)
 }
+
+func (na *namespace) UseFunc(mw ...func(ResponseWriter, *Request, NextMiddlewareCaller)) {
+	n := na.n
+	r := n.r
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	_mw := []Middleware{}
+	for i := 0; i < len(mw); i++ {
+		_mw = append(_mw, Middleware(MiddlewareFunc(mw[i])))
+	}
+
+	n.mws = append(n.mws, _mw...)
+}
