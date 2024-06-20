@@ -891,6 +891,10 @@ func (na *namespace) Namespace(name string) *namespace {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	return na.namespace(name)
+}
+
+func (na *namespace) namespace(name string) *namespace {
 	if !isValidNamespace(name) {
 		panic(PanicMsgInvalidNamespace)
 	}
@@ -898,7 +902,7 @@ func (na *namespace) Namespace(name string) *namespace {
 	name, na.params = parseNamespace(name)
 
 	return &namespace{
-		n: n.namespace(name),
+		n: na.n.namespace(name),
 	}
 }
 
@@ -1068,12 +1072,19 @@ func (na *namespace) DeleteFunc(v any, handler ...HandlerFunc) {
 
 // Register one or more middlewares to intercept requests.
 // These middlewares will be registered in the namespace.
-func (na *namespace) Use(mw ...Middleware) {
+func (na *namespace) Use(v any, mw ...Middleware) {
 	n := na.n
 	r := n.r
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	switch got := v.(type) {
+	case string:
+		path := strings.TrimPrefix(got, "/")
+		n = na.namespace(path).n
+	case Middleware:
+		mw = append([]Middleware{got}, mw...)
+	}
 	n.mws = append(n.mws, mw...)
 }
 

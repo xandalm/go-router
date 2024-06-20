@@ -1598,6 +1598,19 @@ func TestNamespace_Use(t *testing.T) {
 		}
 	})
 
+	t.Run("able to add middleware to a specific path from the namespace", func(t *testing.T) {
+		r := NewRouter()
+		n := r.Namespace("api")
+		n.Use("/v1", dummyMiddleware)
+
+		got := reflect.ValueOf(n.namespace("v1").n.mws[0]).Pointer()
+		want := reflect.ValueOf(dummyMiddleware).Pointer()
+
+		if got != want {
+			t.Errorf("got %v, but want %v", got, want)
+		}
+	})
+
 	t.Run("UseFunc able to add func as middleware", func(t *testing.T) {
 		r := NewRouter()
 		n := r.Namespace("api")
