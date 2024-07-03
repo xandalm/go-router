@@ -980,6 +980,8 @@ func (na *namespace) switchRegister(method string, v any, handler ...Handler) {
 		na.register(value, handler[0], method)
 	case Handler:
 		na.register("", value, method)
+	case func(ResponseWriter, *Request):
+		na.register("", HandlerFunc(value), method)
 	default:
 		panic(PanicMsgIncompatibleArgType)
 	}
