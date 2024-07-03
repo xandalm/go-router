@@ -1638,9 +1638,9 @@ func TestRouter(t *testing.T) {
 		},
 	})
 
-	ns := router.Namespace("api")
+	nsApi := router.Namespace("api")
 
-	ns.Use(&mockMiddleware{
+	nsApi.Use(&mockMiddleware{
 		InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
 			if r.Method != http.MethodPost {
 				next()
@@ -1654,18 +1654,34 @@ func TestRouter(t *testing.T) {
 		},
 	})
 
-	ns.GetFunc("/users/{id}", func(w ResponseWriter, r *Request) {
+	nsApi.GetFunc("/users/{id}", func(w ResponseWriter, r *Request) {
 		fmt.Fprint(w, r.Params()["id"])
 	})
 
-	ns.PostFunc("/users/{id}", func(w ResponseWriter, r *Request) {
+	nsApi.PostFunc("/users/{id}", func(w ResponseWriter, r *Request) {
 		payload, _ := io.ReadAll(r.Body)
 		fmt.Fprint(w, string(payload))
 	})
 
-	if ns == nil {
+	if nsApi == nil {
 		t.Fatal("didn't get the namespace")
 	}
+
+	nsOngsPlaces := nsApi.Namespace("ongs/{ong}/places")
+
+	nsOngsPlaces.GetFunc("/{place}", func(w ResponseWriter, r *Request) {
+		if r.Params()["ong"] != "@WeCanDoTogether" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		switch r.Params()["place"] {
+		case "Brazil":
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "SP, Sao Paulo, Vila Feliz, Rua das Americas, 256")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
 
 	router.Use("/admin", &mockMiddleware{
 		InterceptFunc: func(w ResponseWriter, r *Request, next NextMiddlewareCaller) {
@@ -1745,6 +1761,16 @@ func TestRouter(t *testing.T) {
 
 		assertStatus(t, res, http.StatusBadRequest)
 		assertBody(t, res, "Missing content-type in header")
+	})
+
+	t.Run("GET /api/ongs/@WeCanDoTogether/places/Brazil returns status 200 and expected body", func(t *testing.T) {
+		req, _ := http.NewRequest(MethodGet, newDummyURI("/api/ongs/@WeCanDoTogether/places/Brazil"), nil)
+		res := httptest.NewRecorder()
+
+		router.ServeHTTP(res, req)
+
+		assertStatus(t, res, http.StatusOK)
+		assertBody(t, res, "SP, Sao Paulo, Vila Feliz, Rua das Americas, 256")
 	})
 }
 

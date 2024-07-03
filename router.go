@@ -175,7 +175,8 @@ func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, pa
 
 	var acc string
 	var before string
-	for _, name := range subnames {
+	for i := 0; i < len(subnames); i++ {
+		name := subnames[i]
 		before = acc
 		acc += name
 		if found, ok := ns[acc]; ok { // Exact match
@@ -184,10 +185,44 @@ func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, pa
 			path += acc + "/"
 			acc = ""
 		} else {
-			if found, ok := ns[before+"{}"]; ok { // Has param that can handle with path
-				n = found
+			var candidate string
+			for k := range ns {
+				if strings.HasPrefix(k, acc) {
+					candidate = k
+					before = acc
+					break
+				}
+				if strings.HasPrefix(k, "{}") {
+					candidate = k
+					before = "{}"
+					break
+				}
+			}
+			if candidate == "" {
+				break
+			}
+			last := strings.TrimPrefix(candidate, before)
+			for last != "" {
+				last = strings.TrimPrefix(last, "/")
+				if i++; i == len(subnames) {
+					break
+				}
+				newLast := strings.TrimPrefix(last, subnames[i])
+				if newLast != last {
+					last = newLast
+					continue
+				}
+				newLast = strings.TrimPrefix(last, "{}")
+				if newLast != last {
+					last = newLast
+					continue
+				}
+				break
+			}
+			if last == "" {
+				n = ns[candidate]
 				ns = n.ns // next level
-				path += acc + "{}/"
+				path += candidate + "/"
 				acc = ""
 			} else {
 				acc += "/"
@@ -895,10 +930,11 @@ func (na *namespace) namespace(name string) *namespace {
 		panic(PanicMsgInvalidNamespace)
 	}
 
-	name, na.params = parseNamespace(name)
+	name, params := parseNamespace(name)
 
 	return &namespace{
-		n: na.n.namespace(name),
+		n:      na.n.namespace(name),
+		params: append(na.params, params...),
 	}
 }
 
