@@ -109,7 +109,7 @@ func assertParams(t testing.TB, got, want Params) {
 func assertRouterHasNamespace(t testing.TB, r *Router, n string) {
 	t.Helper()
 
-	if _, ok := r.ns[n]; !ok {
+	if f := r.ns.Find(n); f == nil {
 		t.Fatalf("there is no %q namespace in %v", n, r.ns)
 	}
 }
@@ -117,7 +117,7 @@ func assertRouterHasNamespace(t testing.TB, r *Router, n string) {
 func assertNamespaceHasNamespace(t testing.TB, n *namespace, name string) {
 	t.Helper()
 
-	if _, ok := n.n.ns[name]; !ok {
+	if f := n.n.ns.Find(name); f == nil {
 		t.Fatalf("there is no %q namespace in %v", name, n.n.ns)
 	}
 }
@@ -125,7 +125,7 @@ func assertNamespaceHasNamespace(t testing.TB, n *namespace, name string) {
 func assertRouterNamespaceHasNamespace(t testing.TB, n *routerNamespace, name string) {
 	t.Helper()
 
-	if _, ok := n.ns[name]; !ok {
+	if f := n.ns.Find(name); f == nil {
 		t.Fatalf("there is no %q namespace in %v", name, n.ns)
 	}
 }

@@ -65,42 +65,42 @@ func TestRouter_namespace(t *testing.T) {
 		r.namespace("api/v1/admin")
 
 		r.namespace("api")
-		if len(r.ns) != 1 {
+		if r.ns.Len() != 1 {
 			t.Fatal("expected that the router has 1 namespace")
 		}
 		assertRouterHasNamespace(t, r, "api")
-		assertRouterNamespaceHasNamespace(t, r.ns["api"], "v1/admin")
+		assertRouterNamespaceHasNamespace(t, r.ns.Find("api"), "v1/admin")
 
 		r.namespace("api/v1")
-		if len(r.ns) != 1 {
+		if r.ns.Len() != 1 {
 			t.Fatal("expected that the router has 1 namespace")
 		}
 		assertRouterHasNamespace(t, r, "api")
-		apiNamespace := r.ns["api"]
+		apiNamespace := r.ns.Find("api")
 		assertRouterNamespaceHasNamespace(t, apiNamespace, "v1")
-		v1Namespace := apiNamespace.ns["v1"]
+		v1Namespace := apiNamespace.ns.Find("v1")
 		assertRouterNamespaceHasNamespace(t, v1Namespace, "admin")
 
 		r.namespace("customers/{}")
 
 		r.namespace("customers")
-		if len(r.ns) != 2 {
+		if r.ns.Len() != 2 {
 			t.Fatal("expected that the router has 2 namespace")
 		}
 		assertRouterHasNamespace(t, r, "customers")
-		assertRouterNamespaceHasNamespace(t, r.ns["customers"], "{}")
+		assertRouterNamespaceHasNamespace(t, r.ns.Find("customers"), "{}")
 	})
 	t.Run("do not duplicate or overwritten namespace", func(t *testing.T) {
 		r := &Router{}
 		r.namespace("api")
 		assertRouterHasNamespace(t, r, "api")
-		before := r.ns["api"]
+		before := r.ns.Find("api")
 
 		r.namespace("api")
 		assertRouterHasNamespace(t, r, "api")
-		after := r.ns["api"]
+		after := r.ns.Find("api")
 
-		if len(r.ns) > 1 {
+		if r.ns.Len() > 1 {
 			t.Fatalf("namespace was duplicated, %v", r.ns)
 		}
 
@@ -855,7 +855,7 @@ func TestNamespace_Namespace(t *testing.T) {
 				"v1",
 				NewRouter(),
 				nil,
-				map[string]*routerNamespace{},
+				newNamespaceList(),
 				nil,
 				nil,
 				nil,
@@ -866,7 +866,7 @@ func TestNamespace_Namespace(t *testing.T) {
 
 		assertNamespaceHasNamespace(t, n, "v1")
 
-		got := n.n.ns["v1"]
+		got := n.n.ns.Find("v1")
 		if got != nn.n {
 			t.Fatalf("didn't get the namespace")
 		}
@@ -889,7 +889,7 @@ func TestNamespace_Namespace(t *testing.T) {
 		t.Run("if prefix already exists then create a sub-namespace", func(t *testing.T) {
 			n.Namespace("v1/admin/users")
 
-			if len(n.n.ns) > 1 {
+			if n.n.ns.Len() > 1 {
 				t.Fatalf("there is more than one namespaces at namespace(%p), %v", n, n.n.ns)
 			}
 
@@ -932,7 +932,7 @@ func TestNamespace_Namespace(t *testing.T) {
 				"api",
 				NewRouter(),
 				nil,
-				map[string]*routerNamespace{},
+				newNamespaceList(),
 				nil,
 				nil,
 				nil,
@@ -1812,13 +1812,13 @@ func closestNamespace(router *Router, path string) (n *routerNamespace, p string
 	for path != "" {
 		search = path
 		for search != "" {
-			if f, ok := ns[search]; ok {
+			if f := ns.Find(search); f != nil {
 				path = strings.TrimPrefix(strings.TrimPrefix(path, search), "/")
 				ns = f.ns
 				n = f
 				break
 			}
-			if f, ok := ns["{}"]; ok {
+			if f := ns.Find("{}"); f != nil {
 				path = strings.TrimPrefix(strings.TrimPrefix(path, search), "/")
 				ns = f.ns
 				n = f

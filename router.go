@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"container/list"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -170,38 +171,33 @@ func isValidNamespace(p string) bool {
 	return namespaceValidator.MatchString(p)
 }
 
-func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, path string) {
+func closer(ns *namespaceList, name string) (n *routerNamespace, path string) {
 	subnames := strings.Split(name, "/")
 
 	var acc string
-	var before string
 	for i := 0; i < len(subnames); i++ {
 		name := subnames[i]
-		before = acc
 		acc += name
-		if found, ok := ns[acc]; ok { // Exact match
+		if found := ns.Find(acc); found != nil { // Exact match
 			n = found
 			ns = n.ns // next level
 			path += acc + "/"
 			acc = ""
 		} else {
-			var candidate string
-			for k := range ns {
-				if strings.HasPrefix(k, acc) {
-					candidate = k
-					before = acc
-					break
+			found := ns.FindFunc(func(n *routerNamespace) bool {
+				if strings.HasPrefix(n.name, acc) {
+					return true
 				}
-				if strings.HasPrefix(k, "{}") {
-					candidate = k
-					before = "{}"
-					break
+				if strings.HasPrefix(n.name, "{}") {
+					acc = "{}"
+					return true
 				}
-			}
-			if candidate == "" {
+				return false
+			})
+			if found == nil {
 				break
 			}
-			last := strings.TrimPrefix(candidate, before)
+			last := strings.TrimPrefix(found.name, acc)
 			for last != "" {
 				last = strings.TrimPrefix(last, "/")
 				if i++; i == len(subnames) {
@@ -220,9 +216,9 @@ func closer(ns map[string]*routerNamespace, name string) (n *routerNamespace, pa
 				break
 			}
 			if last == "" {
-				n = ns[candidate]
+				n = found
 				ns = n.ns // next level
-				path += candidate + "/"
+				path += found.name + "/"
 				acc = ""
 			} else {
 				acc += "/"
@@ -273,6 +269,81 @@ type mwError struct {
 	stack string
 }
 
+type namespaceList struct {
+	l *list.List
+}
+
+func newNamespaceList() *namespaceList {
+	return &namespaceList{
+		list.New(),
+	}
+}
+
+func (nsl *namespaceList) Len() int {
+	return nsl.l.Len()
+}
+
+func (nsl *namespaceList) Find(name string) *routerNamespace {
+	e := nsl.l.Front()
+	for e != nil {
+		if e.Value.(*routerNamespace).name < name {
+			e = e.Next()
+			continue
+		}
+		break
+	}
+	if e == nil {
+		return nil
+	}
+	if n := e.Value.(*routerNamespace); n.name == name {
+		return n
+	}
+	return nil
+}
+
+func (nsl *namespaceList) FindFunc(fn func(*routerNamespace) bool) *routerNamespace {
+	e := nsl.l.Front()
+	for e != nil {
+		if n := e.Value.(*routerNamespace); fn(n) {
+			return n
+		}
+		e = e.Next()
+	}
+	return nil
+}
+
+func (nsl *namespaceList) Remove(n *routerNamespace) {
+	e := nsl.l.Front()
+	for e != nil {
+		if e.Value.(*routerNamespace).name < n.name {
+			e = e.Next()
+			continue
+		}
+		break
+	}
+	if e != nil && e.Value.(*routerNamespace) == n {
+		nsl.l.Remove(e)
+	}
+}
+
+func (nsl *namespaceList) Add(n *routerNamespace) {
+	e := nsl.l.Front()
+	for e != nil {
+		if e.Value.(*routerNamespace).name < n.name {
+			e = e.Next()
+			continue
+		}
+		break
+	}
+	if e == nil {
+		nsl.l.PushBack(n)
+		return
+	}
+	if e.Value.(*routerNamespace).name != n.name {
+		nsl.l.InsertBefore(n, e)
+	}
+}
+
 // Like to standard ServeMux, it's a HTTP request multiplexer.
 // Have similar characteristics, however Router brings the
 // possibility to handle params that can be exposed in patterns.
@@ -281,7 +352,7 @@ type mwError struct {
 // rounded by brackets, like "/customers/{id}".
 type Router struct {
 	mu   sync.RWMutex
-	ns   map[string]*routerNamespace
+	ns   *namespaceList
 	mws  []Middleware
 	meh  MiddlewareErrorHandler
 	e    *routerEntry // handle with "/" (the root)
@@ -290,7 +361,7 @@ type Router struct {
 
 func NewRouter() *Router {
 	return &Router{
-		ns: map[string]*routerNamespace{},
+		ns: newNamespaceList(),
 	}
 }
 
@@ -319,7 +390,7 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.ServeHTTP(w, rr)
 }
 
-func crossMiddlewaresLayer(path []string, ns *map[string]*routerNamespace, mw *[]Middleware, w ResponseWriter, r *Request) chan []mwError {
+func crossMiddlewaresLayer(path []string, ns *namespaceList, mw *[]Middleware, w ResponseWriter, r *Request) chan []mwError {
 	iCh := make(chan int, 1)
 	errs := []mwError{}
 
@@ -372,10 +443,10 @@ func crossMiddlewaresLayer(path []string, ns *map[string]*routerNamespace, mw *[
 		}
 	}
 	close(iCh)
-	if fwd, ok := (*ns)[l]; ok {
+	if fwd := ns.Find(l); fwd != nil {
 		errs = append(
 			errs,
-			<-crossMiddlewaresLayer(path[1:], &fwd.ns, &fwd.mws, w, r)...,
+			<-crossMiddlewaresLayer(path[1:], fwd.ns, &fwd.mws, w, r)...,
 		)
 	}
 	ch := make(chan []mwError, 1)
@@ -383,11 +454,16 @@ func crossMiddlewaresLayer(path []string, ns *map[string]*routerNamespace, mw *[
 	return ch
 }
 
+func findNamespace(ns *list.List, name string) (*routerNamespace, bool) {
+
+	return nil, false
+}
+
 func (ro *Router) crossMiddlewares(p string, w ResponseWriter, r *Request) []mwError {
 	p = strings.TrimPrefix(p, "/")
 	p = strings.TrimSuffix(p, "/")
 
-	errors := <-crossMiddlewaresLayer(strings.Split(p, "/"), &ro.ns, &ro.mws, w, r)
+	errors := <-crossMiddlewaresLayer(strings.Split(p, "/"), ro.ns, &ro.mws, w, r)
 	return errors
 }
 
@@ -696,7 +772,7 @@ func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *R
 func (ro *Router) namespace(name string) *routerNamespace {
 
 	if ro.ns == nil {
-		ro.ns = map[string]*routerNamespace{}
+		ro.ns = newNamespaceList()
 	}
 
 	n, path := closer(ro.ns, name)
@@ -710,10 +786,10 @@ func (ro *Router) namespace(name string) *routerNamespace {
 	nn := &routerNamespace{
 		name: name,
 		r:    ro,
-		ns:   map[string]*routerNamespace{},
+		ns:   newNamespaceList(),
 	}
 
-	var ns map[string]*routerNamespace
+	var ns *namespaceList
 	if n == nil {
 		// hold router children (namespace list from this level)
 		ns = ro.ns
@@ -724,18 +800,28 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		nn.p = n
 	}
 
-	for k, v := range ns {
-		last := strings.TrimPrefix(k, name+"/")
-		if last == k {
-			continue
-		}
-		delete(ns, k)
-		v.name = last
-		v.p = nn
-		nn.ns[last] = v
+	found := ns.FindFunc(func(n *routerNamespace) bool {
+		return strings.HasPrefix(n.name, name+"/")
+	})
+	if found != nil {
+		ns.Remove(found)
+		found.name = strings.TrimPrefix(found.name, name+"/")
+		found.p = nn
+		nn.ns.Add(found)
 	}
+	ns.Add(nn)
+	// for k, v := range ns {
+	// 	last := strings.TrimPrefix(k, name+"/")
+	// 	if last == k {
+	// 		continue
+	// 	}
+	// 	delete(ns, k)
+	// 	v.name = last
+	// 	v.p = nn
+	// 	nn.ns[last] = v
+	// }
 
-	ns[name] = nn
+	// ns[name] = nn
 
 	return nn
 }
@@ -840,7 +926,7 @@ type routerNamespace struct {
 	name string
 	r    *Router
 	p    *routerNamespace // parent
-	ns   map[string]*routerNamespace
+	ns   *namespaceList
 	mws  []Middleware
 	es   *routerEntry
 	eu   *routerEntry
@@ -849,7 +935,7 @@ type routerNamespace struct {
 func (na *routerNamespace) namespace(name string) *routerNamespace {
 
 	if na.ns == nil {
-		na.ns = map[string]*routerNamespace{}
+		na.ns = newNamespaceList()
 	}
 
 	n, path := closer(na.ns, name)
@@ -863,10 +949,10 @@ func (na *routerNamespace) namespace(name string) *routerNamespace {
 		name: name,
 		r:    na.r,
 		p:    na,
-		ns:   map[string]*routerNamespace{},
+		ns:   newNamespaceList(),
 	}
 
-	var ns map[string]*routerNamespace
+	var ns *namespaceList
 	if n == nil {
 		ns = na.ns
 	} else {
@@ -874,18 +960,29 @@ func (na *routerNamespace) namespace(name string) *routerNamespace {
 		nn.p = n
 	}
 
-	for k, v := range ns {
-		last := strings.TrimPrefix(k, name+"/")
-		if last == k {
-			continue
-		}
-		delete(ns, k)
-		v.name = last
-		v.p = nn
-		nn.ns[last] = v
+	found := ns.FindFunc(func(n *routerNamespace) bool {
+		return strings.HasPrefix(n.name, name+"/")
+	})
+	if found != nil {
+		ns.Remove(found)
+		found.name = strings.TrimPrefix(found.name, name+"/")
+		found.p = nn
+		nn.ns.Add(found)
 	}
+	ns.Add(nn)
 
-	ns[name] = nn // ignoring slash
+	// for k, v := range ns {
+	// 	last := strings.TrimPrefix(k, name+"/")
+	// 	if last == k {
+	// 		continue
+	// 	}
+	// 	delete(ns, k)
+	// 	v.name = last
+	// 	v.p = nn
+	// 	nn.ns[last] = v
+	// }
+
+	// ns[name] = nn // ignoring slash
 
 	return nn
 }
