@@ -365,7 +365,10 @@ func NewRouter() *Router {
 	}
 }
 
-// Dispatches the request to the handler whose pattern matches the request URL.
+// Dispatches the request to the correspondent handler.
+//
+// Once the handler has been found, the request will be passed
+// through the middlewares accordingly to request path.
 func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.RequestURI == "*" {
 		if r.ProtoAtLeast(1, 1) {
@@ -452,11 +455,6 @@ func crossMiddlewaresLayer(path []string, ns *namespaceList, mw *[]Middleware, w
 	ch := make(chan []mwError, 1)
 	ch <- errs
 	return ch
-}
-
-func findNamespace(ns *list.List, name string) (*routerNamespace, bool) {
-
-	return nil, false
 }
 
 func (ro *Router) crossMiddlewares(p string, w ResponseWriter, r *Request) []mwError {
@@ -713,58 +711,53 @@ func (ro *Router) registerFunc(pattern string, handler func(w ResponseWriter, r 
 	ro.register(pattern, HandlerFunc(handler), method)
 }
 
-// Records the given pattern and handler to handle the corresponding path.
+// Register the given pattern and handler to handle the corresponding path.
 // All is a generic method correspondent
 func (ro *Router) All(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodAll)
 }
 
-// Similar to All method, but this method get a handler as a func
-// and wrap it, to act like a Handler.
+// Similar to router's All method, but expects a function to be wrapped in a Handler.
 func (ro *Router) AllFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, HandlerFunc(handler), MethodAll)
 }
 
-// Records the given pattern and handler to handle the corresponding path only on GET method.
+// Register the given pattern and handler to handle the corresponding path only on GET method.
 func (ro *Router) Get(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodGet)
 }
 
-// Similar to Get method, but this method get a handler as a func
-// and wrap it, to act like a Handler.
+// Similar to router's Get method, but expects a function to be wrapped in a Handler.
 func (ro *Router) GetFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodGet)
 }
 
-// Records the given pattern and handler to handle the corresponding path only on POST method.
+// Register the given pattern and handler to handle the corresponding path only on POST method.
 func (ro *Router) Post(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodPost)
 }
 
-// Similar to Post method, but this method get a handler as a func
-// and wrap it, to act like a Handler.
+// Similar to router's Post method, but expects a function to be wrapped in a Handler.
 func (ro *Router) PostFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodPost)
 }
 
-// Records the given pattern and handler to handle the corresponding path only on PUT method.
+// Register the given pattern and handler to handle the corresponding path only on PUT method.
 func (ro *Router) Put(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodPut)
 }
 
-// Similar to Put method, but this method get a handler as a func
-// and wrap it, to act like a Handler.
+// Similar to router's Put method, but expects a function to be wrapped in a Handler.
 func (ro *Router) PutFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodPut)
 }
 
-// Records the given pattern and handler to handle the corresponding path only on DELETE method.
+// Register the given pattern and handler to handle the corresponding path only on DELETE method.
 func (ro *Router) Delete(pattern string, handler Handler) {
 	ro.register(pattern, handler, MethodDelete)
 }
 
-// Similar to Delete method, but this method get a handler as a func
-// and wrap it, to act like a Handler.
+// Similar to router's Delete method, but expects a function to be wrapped in a Handler.
 func (ro *Router) DeleteFunc(pattern string, handler func(w ResponseWriter, r *Request)) {
 	ro.registerFunc(pattern, handler, MethodDelete)
 }
@@ -835,7 +828,11 @@ func (ro *Router) namespace(name string) *routerNamespace {
 //
 //	"api/v1/media"
 //
-// The param will be transformed into generic param (closed brackets - {})
+// Params, which can be added as follows:
+//
+//	"api/v1/users/{user}"
+//
+// Will be transformed into generic params. In the example: api/v1/users/{}
 //
 // Finally, returns the created namespace.
 func (ro *Router) Namespace(name string) *namespace {
@@ -855,17 +852,24 @@ func (ro *Router) Namespace(name string) *namespace {
 	}
 }
 
-// Register one or more middlewares to intercept requests.
-// These middleware can be registered in the router itself,
+// Register one or more middlewares (see Middleware interface) to intercept requests.
+// These middlewares can be registered in the router itself,
 // or in the given path (namespace).
 //
-// To register middleware in the router, just:
+// To register middleware(s) in the router, just:
 //
 //	router.Use(middleware) // router.Use(middleware1, middleware2,...) for 2+ middlewares
 //
-// To register middleware into path:
+// To register middleware(s) into path:
 //
 //	router.Use("/path", middleware) // router.Use("/path", middleware1, middleware2,...)
+//
+// This method is the way to update the MiddlewareErrorHandler. Only one from this type
+// is possible to exist, and is responsible to handle the error coming from other
+// middleware.
+// To add/update, just:
+//
+//	router.Use(middlewareErrorHandler)
 func (ro *Router) Use(v any, mws ...Middleware) {
 	ro.mu.Lock()
 	defer ro.mu.Unlock()
@@ -873,7 +877,7 @@ func (ro *Router) Use(v any, mws ...Middleware) {
 	ro.use(v, mws...)
 }
 
-// Similar to Use method, but all the given middlewares must be a func.
+// Similar to router's Use method, but all the given middlewares must be a func.
 //
 // A common middleware must be a function with signature equal to
 // func(ResponseWriter, *Request, NextMiddlewareCaller).
@@ -1001,7 +1005,7 @@ type namespace struct {
 	params []string
 }
 
-// Creates or find an existent namespace from the namespace.
+// Creates or find an existent namespace from the router.
 // The given name can be created with a single name:
 //
 //	"api"
@@ -1010,7 +1014,11 @@ type namespace struct {
 //
 //	"api/v1/media"
 //
-// The param will be transformed into generic param (closed brackets - {})
+// Params, which can be added as follows:
+//
+//	"api/v1/users/{user}"
+//
+// Will be transformed into generic params. In the example: api/v1/users/{}
 //
 // Finally, returns the created namespace.
 func (na *namespace) Namespace(name string) *namespace {
@@ -1128,7 +1136,7 @@ func func2Handler(f ...func(ResponseWriter, *Request)) []Handler {
 	return hds
 }
 
-// Allow to register a handler able to handle to any request method that matches the pattern.
+// Allow to register a handler to any request method that matches the pattern.
 // There are 3 ways.
 //
 // It's possible to register the handler to the namespace path + "/", like http&#58;//site.com/nspath/;
@@ -1147,60 +1155,64 @@ func (na *namespace) All(v any, handler ...Handler) {
 	na.switchRegister(MethodAll, v, handler...)
 }
 
-// Similar to All(), but this expect a func as handler
+// Similar to namespace's All method, but expects a function to be wrapped in a Handler.
 func (na *namespace) AllFunc(v any, handler ...func(ResponseWriter, *Request)) {
 	na.switchRegister(MethodAll, v, func2Handler(handler...)...)
 }
 
-// Similar to the All(), but corresponds only to GET requests
+// Except it only matches the GET requests, this must be used in the same way as it is for the
+// namespace's All method.
 func (na *namespace) Get(v any, handler ...Handler) {
 	na.switchRegister(MethodGet, v, handler...)
 }
 
-// Similar to Get(), but this expect a func as handler
+// Similar to namespace's Get method, but expects a function to be wrapped in a Handler.
 func (na *namespace) GetFunc(v any, handler ...func(ResponseWriter, *Request)) {
 	na.switchRegister(MethodGet, v, func2Handler(handler...)...)
 }
 
-// Similar to the All(), but corresponds only to POST requests
+// Except it only matches the POST requests, this must be used in the same way as it is for the
+// namespace's All method.
 func (na *namespace) Post(v any, handler ...Handler) {
 	na.switchRegister(MethodPost, v, handler...)
 }
 
-// Similar to Post(), but this expect a func as handler
+// Similar to namespace's Post method, but expects a function to be wrapped in a Handler.
 func (na *namespace) PostFunc(v any, handler ...func(ResponseWriter, *Request)) {
 	na.switchRegister(MethodPost, v, func2Handler(handler...)...)
 }
 
-// Similar to the All(), but corresponds only to PUT requests
+// Except it only matches the PUT requests, this must be used in the same way as it is for the
+// namespace's All method.
 func (na *namespace) Put(v any, handler ...Handler) {
 	na.switchRegister(MethodPut, v, handler...)
 }
 
-// Similar to Put(), but this expect a func as handler
+// Similar to namespace's Put method, but expects a function to be wrapped in a Handler.
 func (na *namespace) PutFunc(v any, handler ...func(ResponseWriter, *Request)) {
 	na.switchRegister(MethodPut, v, func2Handler(handler...)...)
 }
 
-// Similar to the All(), but corresponds only to DELETE requests
+// Except it only matches the DELETE requests, this must be used in the same way as it is for the
+// namespace's All method.
 func (na *namespace) Delete(v any, handler ...Handler) {
 	na.switchRegister(MethodDelete, v, handler...)
 }
 
-// Similar to Delete(), but this expect a func as handler
+// Similar to namespace's Delete method, but expects a function to be wrapped in a Handler.
 func (na *namespace) DeleteFunc(v any, handler ...func(ResponseWriter, *Request)) {
 	na.switchRegister(MethodDelete, v, func2Handler(handler...)...)
 }
 
-// Register one or more middlewares to intercept requests.
+// Register one or more middlewares (see Middleware interface) to intercept requests.
 // These middlewares can be registered in the namespace itself,
 // or in the given path (advanced namespace).
 //
-// To register middleware in the namespace, just:
+// To register middleware(s) in the namespace, just:
 //
 //	namespace.Use(middleware) // namespace.Use(middleware1, ...) for 2+ middlewares
 //
-// To register middleware into path:
+// To register middleware(s) into path:
 //
 //	namespace.Use("/path", middleware) // namespace.Use("/path", middleware1, ...) for 2= middlewares
 func (na *namespace) Use(v any, mws ...Middleware) {
@@ -1212,7 +1224,7 @@ func (na *namespace) Use(v any, mws ...Middleware) {
 	na.use(v, mws...)
 }
 
-// Similar to Use method, but all the given middlewares must be a func.
+// Similar to namespace's Use method, but all the given middlewares must be a func.
 //
 // A common middleware must be a function with signature equal to
 // func(ResponseWriter, *Request, NextMiddlewareCaller).
