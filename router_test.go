@@ -1634,7 +1634,7 @@ func TestRouter(t *testing.T) {
 
 	router.Get("/greet", &mockHandler{
 		OnHandleFunc: func(w ResponseWriter, r *Request) {
-			fmt.Fprint(w, `Hello, Requester`)
+			fmt.Fprint(w.(*responseWriter).rw, `Hello, Requester`)
 		},
 	})
 
@@ -1655,12 +1655,12 @@ func TestRouter(t *testing.T) {
 	})
 
 	nsApi.GetFunc("/users/{id}", func(w ResponseWriter, r *Request) {
-		fmt.Fprint(w, r.Params()["id"])
+		fmt.Fprint(w.(*responseWriter).rw, r.Params()["id"])
 	})
 
 	nsApi.PostFunc("/users/{id}", func(w ResponseWriter, r *Request) {
 		payload, _ := io.ReadAll(r.Body)
-		fmt.Fprint(w, string(payload))
+		fmt.Fprint(w.(*responseWriter).rw, string(payload))
 	})
 
 	if nsApi == nil {
@@ -1671,15 +1671,15 @@ func TestRouter(t *testing.T) {
 
 	nsOngsPlaces.GetFunc("/{place}", func(w ResponseWriter, r *Request) {
 		if r.Params()["ong"] != "@WeCanDoTogether" {
-			w.WriteHeader(http.StatusNotFound)
+			w.(*responseWriter).rw.WriteHeader(http.StatusNotFound)
 			return
 		}
 		switch r.Params()["place"] {
 		case "Brazil":
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, "SP, Sao Paulo, Vila Feliz, Rua das Americas, 256")
+			w.(*responseWriter).rw.WriteHeader(http.StatusOK)
+			fmt.Fprint(w.(*responseWriter).rw, "SP, Sao Paulo, Vila Feliz, Rua das Americas, 256")
 		default:
-			w.WriteHeader(http.StatusNotFound)
+			w.(*responseWriter).rw.WriteHeader(http.StatusNotFound)
 		}
 	})
 
@@ -1695,7 +1695,7 @@ func TestRouter(t *testing.T) {
 
 	router.Get("/admin/users", &mockHandler{
 		OnHandleFunc: func(w ResponseWriter, r *Request) {
-			fmt.Fprint(w, `[]`)
+			fmt.Fprint(w.(*responseWriter).rw, `[]`)
 		},
 	})
 
@@ -1703,10 +1703,10 @@ func TestRouter(t *testing.T) {
 		HandleFunc: func(w ResponseWriter, r *Request, e error) {
 			switch e.Error() {
 			case "Missing authorization in header", "Missing content-type in header":
-				w.WriteHeader(http.StatusBadRequest)
-				fmt.Fprint(w, e.Error())
+				w.(*responseWriter).rw.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w.(*responseWriter).rw, e.Error())
 			default:
-				w.WriteHeader(http.StatusInternalServerError)
+				w.(*responseWriter).rw.WriteHeader(http.StatusInternalServerError)
 			}
 		},
 	})

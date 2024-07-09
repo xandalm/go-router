@@ -35,8 +35,6 @@ const (
 	PanicMsgMissingMiddleware   = "router: missing middleware"
 )
 
-type ResponseWriter http.ResponseWriter
-
 type Handler interface {
 	ServeHTTP(ResponseWriter, *Request)
 }
@@ -73,7 +71,7 @@ func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 type notFoundHandler struct{}
 
 func (h *notFoundHandler) ServeHTTP(w ResponseWriter, r *Request) {
-	w.WriteHeader(http.StatusNotFound)
+	w.(*responseWriter).rw.WriteHeader(http.StatusNotFound)
 }
 
 // Holds a simple request handler that replies HTTP 404 status
@@ -85,7 +83,7 @@ type redirectHandler struct {
 }
 
 func (rh *redirectHandler) ServeHTTP(w ResponseWriter, r *Request) {
-	http.Redirect(w, r.Request, rh.url, rh.code)
+	http.Redirect(w.(*responseWriter).rw, r.Request, rh.url, rh.code)
 }
 
 // Creates a redirect handler
@@ -379,18 +377,19 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h, p, params := ro.Handler(r)
 	rr := &Request{params: params, Request: r}
+	ww := &responseWriter{rw: w}
 	var errors []mwError
-	if errors = ro.crossMiddlewares(p, w, rr); len(errors) > 0 {
+	if errors = ro.crossMiddlewares(p, ww, rr); len(errors) > 0 {
 		err := errors[0]
 		if ro.meh == nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(fmt.Sprintf("Middleware Error: %s\n%s", err.err, err.stack))
 		} else {
-			ro.meh.Handle(w, rr, err.err)
+			ro.meh.Handle(ww, rr, err.err)
 		}
 		return
 	}
-	h.ServeHTTP(w, rr)
+	h.ServeHTTP(ww, rr)
 }
 
 func crossMiddlewaresLayer(path []string, ns *namespaceList, mw *[]Middleware, w ResponseWriter, r *Request) chan []mwError {
