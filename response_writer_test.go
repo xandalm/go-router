@@ -1,35 +1,56 @@
 package router
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-func TestStatusMethod(t *testing.T) {
+func TestSetStatusMethod(t *testing.T) {
 	res := httptest.NewRecorder()
 
 	w := ResponseWriter(&responseWriter{rw: res})
-	w.Status(http.StatusInternalServerError)
+
+	want := http.StatusInternalServerError
+	w.SetStatus(want)
 
 	got := res.Code
-	want := http.StatusInternalServerError
 
 	if got != want {
 		t.Errorf("got status %d, but want %d", got, want)
 	}
 }
 
-func TestSetMethod(t *testing.T) {
+func TestSetHeaderMethod(t *testing.T) {
 	res := httptest.NewRecorder()
 
 	w := ResponseWriter(&responseWriter{rw: res})
-	w.Set("Content-Type", "application/json")
+
+	want := "application/json"
+	w.SetHeader("Content-Type", want)
 
 	got := res.Header().Get("Content-Type")
-	want := "application/json"
 
 	if got != want {
-		t.Errorf("got %s, but want %s", got, want)
+		t.Errorf("got %q, but want %q", got, want)
 	}
+}
+
+func TestWriteMethod(t *testing.T) {
+	t.Run("writes string and read from response", func(t *testing.T) {
+		res := httptest.NewRecorder()
+
+		w := ResponseWriter(&responseWriter{rw: res})
+
+		want := "some data"
+		w.Write(want)
+
+		data, _ := io.ReadAll(res.Body)
+		got := string(data)
+
+		if got != want {
+			t.Errorf("got %q, but want %q", got, want)
+		}
+	})
 }
