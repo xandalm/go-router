@@ -5,6 +5,8 @@ import (
 	"net/http"
 )
 
+var PanicMsgWritingError = "router: unexpected error writing on response writer"
+
 type ResponseWriter interface {
 	SetStatus(code int)
 	SetHeader(key, value string)
@@ -24,5 +26,8 @@ func (rw *responseWriter) SetHeader(key, value string) {
 }
 
 func (rw *responseWriter) Write(v any) {
-	fmt.Fprint(rw.rw, v)
+	_, err := fmt.Fprint(rw.rw, v)
+	if err != nil {
+		panic(PanicMsgWritingError)
+	}
 }
