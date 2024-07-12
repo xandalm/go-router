@@ -37,16 +37,6 @@ func TestSetHeaderMethod(t *testing.T) {
 	}
 }
 
-type stubResponseWriter struct{}
-
-func (rw *stubResponseWriter) SetHeader(key string, value string) {}
-
-func (rw *stubResponseWriter) SetStatus(code int) {}
-
-func (rw *stubResponseWriter) Write(v any) {
-	panic(PanicMsgWritingError)
-}
-
 func TestWriteMethod(t *testing.T) {
 
 	cases := []struct {
@@ -75,17 +65,69 @@ func TestWriteMethod(t *testing.T) {
 			}
 		})
 	}
-	t.Run("panics on writing error", func(t *testing.T) {
-		w := &stubResponseWriter{}
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Fatal("didn't panic")
+}
+
+func TestWriteJSONMethod(t *testing.T) {
+	cases := []struct {
+		value any
+		want  string
+	}{
+		{
+			value: "text",
+			want:  `"text"`,
+		},
+		{
+			value: 1,
+			want:  "1",
+		},
+		{
+			value: 1.2,
+			want:  "1.2",
+		},
+		{
+			value: []int{},
+			want:  "[]",
+		},
+		{
+			value: []int{1, 2},
+			want:  "[1,2]",
+		},
+		{
+			value: struct {
+				FieldOne int
+				FieldTwo string
+			}{1, "any"},
+			want: `{"FieldOne":1,"FieldTwo":"any"}`,
+		},
+		{
+			value: struct {
+				fieldOne int
+				fieldTwo string
+			}{1, "any"},
+			want: `{}`,
+		},
+		{
+			value: struct {
+				Field int `json:"field"`
+			}{1},
+			want: `{"field":1}`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run("writes value following json format and read from response", func(t *testing.T) {
+			res := httptest.NewRecorder()
+
+			w := ResponseWriter(&responseWriter{rw: res})
+
+			w.WriteJSON(c.value)
+
+			data, _ := io.ReadAll(res.Body)
+			got := string(data)
+
+			if got != c.want {
+				t.Errorf("got %q, but want %q", got, c.want)
 			}
-			if r != PanicMsgWritingError {
-				t.Errorf("panics %s but want %s", r, PanicMsgWritingError)
-			}
-		}()
-		w.Write("")
-	})
+		})
+	}
 }
