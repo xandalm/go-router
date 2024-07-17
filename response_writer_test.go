@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"io"
+	"math"
 	"math/bits"
 	"net/http"
 	"net/http/httptest"
@@ -77,7 +78,10 @@ func TestWriteMethod(t *testing.T) {
 		{uint64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
 		{pi8, []byte{0}},
 		{ppi8, []byte{0}},
+		{float32(1.0), u32b(math.Float32bits(1.0))},
+		{float64(1.0), u64b(math.Float64bits(1.0))},
 	}
+
 	for _, c := range cases {
 		t.Run("writes value as string and read from response", func(t *testing.T) {
 			res := httptest.NewRecorder()

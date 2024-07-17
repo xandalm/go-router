@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/bits"
 	"net/http"
 	"reflect"
@@ -88,6 +89,16 @@ func (rw *responseWriter) writeInt(v any) (err error) {
 	return
 }
 
+func (rw *responseWriter) writeFloat(v any) (err error) {
+	switch val := v.(type) {
+	case float32:
+		err = rw.write(u32b(math.Float32bits(val)))
+	case float64:
+		err = rw.write(u64b(math.Float64bits(val)))
+	}
+	return
+}
+
 func (rw *responseWriter) Write(v any) (err error) {
 	val := reflect.ValueOf(v)
 	for val.Kind() == reflect.Pointer {
@@ -99,6 +110,8 @@ func (rw *responseWriter) Write(v any) (err error) {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		err = rw.writeInt(val.Interface())
+	case reflect.Float32, reflect.Float64:
+		err = rw.writeFloat(val.Interface())
 	default:
 		err = fmt.Errorf("can't write %T type, must be a primitive or a pointer that refers to an instantiated primitive", v)
 	}
