@@ -1,7 +1,9 @@
 package router
 
 import (
+	"bytes"
 	"io"
+	"math/bits"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,6 +40,63 @@ func TestSetHeaderMethod(t *testing.T) {
 }
 
 func TestWriteMethod(t *testing.T) {
+	type tcase struct {
+		value any
+		want  []byte
+	}
+
+	createPosIntTestCase := func() tcase {
+		if bits.UintSize == 32 {
+			return tcase{int(1), []byte{0, 0, 0, 1}}
+		}
+		return tcase{int(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}}
+	}
+
+	createNegIntTestCase := func() tcase {
+		if bits.UintSize == 32 {
+			return tcase{int(-1), []byte{255, 255, 255, 255}}
+		}
+		return tcase{int(-1), []byte{255, 255, 255, 255, 255, 255, 255, 255}}
+	}
+
+	pi8 := new(int8)
+	ppi8 := &pi8
+
+	cases := []tcase{
+		{"some data", []byte("some data")},
+		createPosIntTestCase(),
+		createNegIntTestCase(),
+		{int8(1), []byte{1}},
+		{int16(1), []byte{0, 1}},
+		{int32(1), []byte{0, 0, 0, 1}},
+		{int64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
+		{uint(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
+		{uint8(1), []byte{1}},
+		{uint16(1), []byte{0, 1}},
+		{uint32(1), []byte{0, 0, 0, 1}},
+		{uint64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
+		{pi8, []byte{0}},
+		{ppi8, []byte{0}},
+	}
+	for _, c := range cases {
+		t.Run("writes value as string and read from response", func(t *testing.T) {
+			res := httptest.NewRecorder()
+
+			w := ResponseWriter(&responseWriter{rw: res})
+
+			err := w.Write(c.value)
+			assertNoError(t, err)
+
+			got, _ := io.ReadAll(res.Body)
+
+			if !bytes.Equal(got, c.want) {
+				t.Errorf("got %q, but want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestWriteStringMethod(t *testing.T) {
 
 	cases := []struct {
 		value any
@@ -55,7 +114,7 @@ func TestWriteMethod(t *testing.T) {
 
 			w := ResponseWriter(&responseWriter{rw: res})
 
-			w.Write(c.value)
+			w.WriteString(c.value)
 
 			data, _ := io.ReadAll(res.Body)
 			got := string(data)
