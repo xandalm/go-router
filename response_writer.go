@@ -11,11 +11,39 @@ import (
 )
 
 type ResponseWriter interface {
+	// SetStatus calls to WriteHeader method from the
+	// [http.ResponseWriter] to modifies the http response
+	// status code.
 	SetStatus(code int)
+	// SetHeader calls to Set method from the [http.Header]
+	// type held by [http.ResponseWriter] to modifies a http
+	// response header.
 	SetHeader(key, value string)
-	Write(v any) error
-	WriteString(v any) error
-	WriteJSON(v any) error
+	// The given value must be a basic/primitive type
+	// (rune, string, [u]int, [u]int[8|16|32|64], float[32|64]),
+	// or a pointer that reach to one from listed types above.
+	// The given value will be converted to its byte(s) form.
+	//
+	// Finally call Write method from the [http.ResponseWriter],
+	// that write the response body and complete the http reply.
+	Send(v any) error
+	// WriteString use [fmt.Fprint] function, that way
+	// the given value will be written following the string
+	// representation of the given value.
+	//
+	// The call to [fmt.Fprint] results in a call to Write
+	// method from the [http.ResponseWriter], that write
+	// the response body and complete the http reply.
+	SendString(v any) error
+	// WriteJSON tries to write the given value as JSON
+	// representation using the json.Marshal function.
+	// That way, the type of the given value can implement
+	// the json.Marshaler interface to customize its JSON
+	// representation.
+	//
+	// Finally call Write method from the [http.ResponseWriter],
+	// that write the response body and complete the http reply.
+	SendJSON(v any) error
 }
 
 type responseWriter struct {
@@ -99,7 +127,7 @@ func (rw *responseWriter) writeFloat(v any) (err error) {
 	return
 }
 
-func (rw *responseWriter) Write(v any) (err error) {
+func (rw *responseWriter) Send(v any) (err error) {
 	val := reflect.ValueOf(v)
 	for val.Kind() == reflect.Pointer {
 		val = reflect.Indirect(val)
@@ -118,17 +146,17 @@ func (rw *responseWriter) Write(v any) (err error) {
 	return
 }
 
-func (rw *responseWriter) WriteString(v any) error {
+func (rw *responseWriter) SendString(v any) error {
 	_, err := fmt.Fprint(rw.rw, v)
 	return err
 }
 
-func (rw *responseWriter) WriteJSON(v any) error {
+func (rw *responseWriter) SendJSON(v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		panic(jsonEncodeError(v))
 	}
-	return rw.WriteString(string(data))
+	return rw.SendString(string(data))
 }
 
 func jsonEncodeError(v any) string {

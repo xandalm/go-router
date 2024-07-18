@@ -40,7 +40,7 @@ func TestSetHeaderMethod(t *testing.T) {
 	}
 }
 
-func TestWriteMethod(t *testing.T) {
+func TestSendMethod(t *testing.T) {
 	type tcase struct {
 		desc  string
 		value any
@@ -72,23 +72,23 @@ func TestWriteMethod(t *testing.T) {
 	ppi8 := &pi8
 
 	cases := []tcase{
-		{"writes string bytes", "some data", []byte("some data")},
-		{"writes int bytes", int(1), createPosIntBytes()},
-		{"writes negative int bytes", int(-1), createNegIntBytes()},
-		{"writes int8 bytes", int8(1), []byte{1}},
-		{"writes int16 bytes", int16(1), []byte{0, 1}},
-		{"writes int32 bytes", int32(1), []byte{0, 0, 0, 1}},
-		{"writes int64 bytes", int64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
-		{"writes uint bytes", uint(1), createUintBytes()},
-		{"writes uint8 bytes", uint8(1), []byte{1}},
-		{"writes uint16 bytes", uint16(1), []byte{0, 1}},
-		{"writes uint32 bytes", uint32(1), []byte{0, 0, 0, 1}},
-		{"writes uint64 bytes", uint64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
-		{"writes *int8 (referenced int8) bytes", pi8, []byte{0}},
-		{"writes **int8 (ref. ref. int8) bytes", ppi8, []byte{0}},
-		{"writes float32 bytes", float32(1.0), u32b(math.Float32bits(1.0))},
-		{"writes float64 bytes", float64(1.0), u64b(math.Float64bits(1.0))},
-		{"writes rune bytes", 'A', []byte{0, 0, 0, 65}}, // alright, rune is int32 alias
+		{"sends string bytes", "some data", []byte("some data")},
+		{"sends int bytes", int(1), createPosIntBytes()},
+		{"sends negative int bytes", int(-1), createNegIntBytes()},
+		{"sends int8 bytes", int8(1), []byte{1}},
+		{"sends int16 bytes", int16(1), []byte{0, 1}},
+		{"sends int32 bytes", int32(1), []byte{0, 0, 0, 1}},
+		{"sends int64 bytes", int64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
+		{"sends uint bytes", uint(1), createUintBytes()},
+		{"sends uint8 bytes", uint8(1), []byte{1}},
+		{"sends uint16 bytes", uint16(1), []byte{0, 1}},
+		{"sends uint32 bytes", uint32(1), []byte{0, 0, 0, 1}},
+		{"sends uint64 bytes", uint64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
+		{"sends *int8 (referenced int8) bytes", pi8, []byte{0}},
+		{"sends **int8 (ref. ref. int8) bytes", ppi8, []byte{0}},
+		{"sends float32 bytes", float32(1.0), u32b(math.Float32bits(1.0))},
+		{"sends float64 bytes", float64(1.0), u64b(math.Float64bits(1.0))},
+		{"sends rune bytes", 'A', []byte{0, 0, 0, 65}}, // alright, rune is int32 alias
 	}
 
 	for _, c := range cases {
@@ -97,7 +97,7 @@ func TestWriteMethod(t *testing.T) {
 
 			w := ResponseWriter(&responseWriter{rw: res})
 
-			err := w.Write(c.value)
+			err := w.Send(c.value)
 			assertNoError(t, err)
 
 			got, _ := io.ReadAll(res.Body)
@@ -109,7 +109,7 @@ func TestWriteMethod(t *testing.T) {
 	}
 }
 
-func TestWriteStringMethod(t *testing.T) {
+func TestSendStringMethod(t *testing.T) {
 
 	cases := []struct {
 		value any
@@ -122,12 +122,12 @@ func TestWriteStringMethod(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		t.Run("writes value as string and read from response", func(t *testing.T) {
+		t.Run("sends value as string and read from response", func(t *testing.T) {
 			res := httptest.NewRecorder()
 
 			w := ResponseWriter(&responseWriter{rw: res})
 
-			w.WriteString(c.value)
+			w.SendString(c.value)
 
 			data, _ := io.ReadAll(res.Body)
 			got := string(data)
@@ -139,7 +139,7 @@ func TestWriteStringMethod(t *testing.T) {
 	}
 }
 
-func TestWriteJSONMethod(t *testing.T) {
+func TestSendJSONMethod(t *testing.T) {
 	cases := []struct {
 		value any
 		want  string
@@ -187,12 +187,12 @@ func TestWriteJSONMethod(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		t.Run("writes value following json format and read from response", func(t *testing.T) {
+		t.Run("sends value following json format and read from response", func(t *testing.T) {
 			res := httptest.NewRecorder()
 
 			w := ResponseWriter(&responseWriter{rw: res})
 
-			w.WriteJSON(c.value)
+			w.SendJSON(c.value)
 
 			data, _ := io.ReadAll(res.Body)
 			got := string(data)
