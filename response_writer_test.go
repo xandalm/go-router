@@ -42,48 +42,57 @@ func TestSetHeaderMethod(t *testing.T) {
 
 func TestWriteMethod(t *testing.T) {
 	type tcase struct {
+		desc  string
 		value any
 		want  []byte
 	}
 
-	createPosIntTestCase := func() tcase {
+	createPosIntBytes := func() []byte {
 		if bits.UintSize == 32 {
-			return tcase{int(1), []byte{0, 0, 0, 1}}
+			return []byte{0, 0, 0, 1}
 		}
-		return tcase{int(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}}
+		return []byte{0, 0, 0, 0, 0, 0, 0, 1}
 	}
 
-	createNegIntTestCase := func() tcase {
+	createNegIntBytes := func() []byte {
 		if bits.UintSize == 32 {
-			return tcase{int(-1), []byte{255, 255, 255, 255}}
+			return []byte{255, 255, 255, 255}
 		}
-		return tcase{int(-1), []byte{255, 255, 255, 255, 255, 255, 255, 255}}
+		return []byte{255, 255, 255, 255, 255, 255, 255, 255}
+	}
+
+	createUintBytes := func() []byte {
+		if bits.UintSize == 32 {
+			return []byte{0, 0, 0, 1}
+		}
+		return []byte{0, 0, 0, 0, 0, 0, 0, 1}
 	}
 
 	pi8 := new(int8)
 	ppi8 := &pi8
 
 	cases := []tcase{
-		{"some data", []byte("some data")},
-		createPosIntTestCase(),
-		createNegIntTestCase(),
-		{int8(1), []byte{1}},
-		{int16(1), []byte{0, 1}},
-		{int32(1), []byte{0, 0, 0, 1}},
-		{int64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
-		{uint(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
-		{uint8(1), []byte{1}},
-		{uint16(1), []byte{0, 1}},
-		{uint32(1), []byte{0, 0, 0, 1}},
-		{uint64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
-		{pi8, []byte{0}},
-		{ppi8, []byte{0}},
-		{float32(1.0), u32b(math.Float32bits(1.0))},
-		{float64(1.0), u64b(math.Float64bits(1.0))},
+		{"writes string bytes", "some data", []byte("some data")},
+		{"writes int bytes", int(1), createPosIntBytes()},
+		{"writes negative int bytes", int(-1), createNegIntBytes()},
+		{"writes int8 bytes", int8(1), []byte{1}},
+		{"writes int16 bytes", int16(1), []byte{0, 1}},
+		{"writes int32 bytes", int32(1), []byte{0, 0, 0, 1}},
+		{"writes int64 bytes", int64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
+		{"writes uint bytes", uint(1), createUintBytes()},
+		{"writes uint8 bytes", uint8(1), []byte{1}},
+		{"writes uint16 bytes", uint16(1), []byte{0, 1}},
+		{"writes uint32 bytes", uint32(1), []byte{0, 0, 0, 1}},
+		{"writes uint64 bytes", uint64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
+		{"writes *int8 (referenced int8) bytes", pi8, []byte{0}},
+		{"writes **int8 (ref. ref. int8) bytes", ppi8, []byte{0}},
+		{"writes float32 bytes", float32(1.0), u32b(math.Float32bits(1.0))},
+		{"writes float64 bytes", float64(1.0), u64b(math.Float64bits(1.0))},
+		{"writes rune bytes", 'A', []byte{0, 0, 0, 65}}, // alright, rune is int32 alias
 	}
 
 	for _, c := range cases {
-		t.Run("writes value as string and read from response", func(t *testing.T) {
+		t.Run(c.desc, func(t *testing.T) {
 			res := httptest.NewRecorder()
 
 			w := ResponseWriter(&responseWriter{rw: res})
