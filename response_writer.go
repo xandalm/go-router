@@ -1,14 +1,19 @@
 package router
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/bits"
 	"net/http"
 	"reflect"
 )
+
+var ErrHeterogenicTypeWhileWriting = errors.New("only homogeneous slice or array can be written")
 
 type ResponseWriter interface {
 	// SetStatus calls to WriteHeader method from the
@@ -76,53 +81,187 @@ func u64b(v uint64) []byte {
 	return b
 }
 
-func (rw *responseWriter) write(bs []byte) error {
-	_, err := rw.rw.Write(bs)
+func write(w io.Writer, b []byte) error {
+	_, err := w.Write(b)
 	return err
 }
 
-func (rw *responseWriter) writeInt(v any) (err error) {
+func writeInt(w io.Writer, v any) (err error) {
 	switch val := v.(type) {
 	case int:
 		switch bits.UintSize {
 		case 64:
-			err = rw.write(u64b(uint64(uint(val))))
+			err = write(w, u64b(uint64(uint(val))))
 		case 32:
-			err = rw.write(u32b(uint32(uint(val))))
+			err = write(w, u32b(uint32(uint(val))))
 		}
 	case uint:
 		switch bits.UintSize {
 		case 64:
-			err = rw.write(u64b(uint64(val)))
+			err = write(w, u64b(uint64(val)))
 		case 32:
-			err = rw.write(u32b(uint32(val)))
+			err = write(w, u32b(uint32(val)))
 		}
 	case int8:
-		err = rw.write([]byte{uint8(val)})
+		err = write(w, []byte{uint8(val)})
 	case uint8:
-		err = rw.write([]byte{val})
+		err = write(w, []byte{val})
 	case int16:
-		err = rw.write(u16b(uint16(val)))
+		err = write(w, u16b(uint16(val)))
 	case uint16:
-		err = rw.write(u16b(val))
+		err = write(w, u16b(val))
 	case int32:
-		err = rw.write(u32b(uint32(val)))
+		err = write(w, u32b(uint32(val)))
 	case uint32:
-		err = rw.write(u32b(val))
+		err = write(w, u32b(val))
 	case int64:
-		err = rw.write(u64b(uint64(val)))
+		err = write(w, u64b(uint64(val)))
 	case uint64:
-		err = rw.write(u64b(val))
+		err = write(w, u64b(val))
 	}
 	return
 }
 
-func (rw *responseWriter) writeFloat(v any) (err error) {
+func writeFloat(w io.Writer, v any) (err error) {
 	switch val := v.(type) {
 	case float32:
-		err = rw.write(u32b(math.Float32bits(val)))
+		err = write(w, u32b(math.Float32bits(val)))
 	case float64:
-		err = rw.write(u64b(math.Float64bits(val)))
+		err = write(w, u64b(math.Float64bits(val)))
+	}
+	return
+}
+
+func bytestream[A any](collec []A, converter func(A) []byte) []byte {
+	b := []byte{}
+	for i := 0; i < len(collec); i++ {
+		b = append(b, converter(collec[i])...)
+	}
+	return b
+}
+
+func indirectSliceWrite(w io.Writer, v any) (err error) {
+	collec := reflect.ValueOf(v)
+
+	if collec.Len() == 0 {
+		return
+	}
+
+	first := collec.Index(0)
+
+	// count how many steps is needed to reach at the final referred value
+	steps := 0
+	for first.Kind() == reflect.Pointer {
+		first = reflect.Indirect(first)
+		steps++
+	}
+
+	expectedKind := first.Kind()
+
+	var fn func(v reflect.Value) error
+	buf := bytes.NewBuffer([]byte{})
+	switch expectedKind {
+	case reflect.String:
+		fn = func(v reflect.Value) error {
+			return write(buf, []byte(v.String()))
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		fn = func(v reflect.Value) error {
+			return writeInt(buf, v.Interface())
+		}
+	case reflect.Float32, reflect.Float64:
+		fn = func(v reflect.Value) error {
+			return writeFloat(buf, v.Interface())
+		}
+	}
+
+	err = fn(first)
+	for i := 1; i < collec.Len() && err == nil; i++ {
+		val := collec.Index(i)
+		for j := 0; j < steps; j++ {
+			val = reflect.Indirect(val)
+		}
+		if val.Kind() != expectedKind {
+			return ErrHeterogenicTypeWhileWriting
+		}
+		err = fn(val)
+	}
+	if err != nil {
+		return
+	}
+	err = write(w, buf.Bytes())
+	return
+}
+
+func writeSlice(w io.Writer, v any) (err error) {
+	switch val := v.(type) {
+	case []int:
+		switch bits.UintSize {
+		case 64:
+			err = write(w, bytestream(val, func(v int) []byte {
+				return u64b(uint64(uint(v)))
+			}))
+		case 32:
+			err = write(w, bytestream(val, func(v int) []byte {
+				return u32b(uint32(uint(v)))
+			}))
+		}
+	case []uint:
+		switch bits.UintSize {
+		case 64:
+			err = write(w, bytestream(val, func(v uint) []byte {
+				return u64b(uint64(v))
+			}))
+		case 32:
+			err = write(w, bytestream(val, func(v uint) []byte {
+				return u32b(uint32(v))
+			}))
+		}
+	case []int8:
+		err = write(w, bytestream(val, func(v int8) []byte {
+			return []byte{byte(v)}
+		}))
+	case []uint8:
+		err = write(w, bytestream(val, func(v uint8) []byte {
+			return []byte{v}
+		}))
+	case []int16:
+		err = write(w, bytestream(val, func(v int16) []byte {
+			return u16b(uint16(v))
+		}))
+	case []uint16:
+		err = write(w, bytestream(val, func(v uint16) []byte {
+			return u16b(v)
+		}))
+	case []int32:
+		err = write(w, bytestream(val, func(v int32) []byte {
+			return u32b(uint32(v))
+		}))
+	case []uint32:
+		err = write(w, bytestream(val, func(v uint32) []byte {
+			return u32b(v)
+		}))
+	case []int64:
+		err = write(w, bytestream(val, func(v int64) []byte {
+			return u64b(uint64(v))
+		}))
+	case []uint64:
+		err = write(w, bytestream(val, func(v uint64) []byte {
+			return u64b(v)
+		}))
+	case []float32:
+		err = write(w, bytestream(val, func(v float32) []byte {
+			return u32b(math.Float32bits(v))
+		}))
+	case []float64:
+		err = write(w, bytestream(val, func(v float64) []byte {
+			return u64b(math.Float64bits(v))
+		}))
+	case []any:
+		err = ErrHeterogenicTypeWhileWriting
+	default:
+		err = indirectSliceWrite(w, val)
 	}
 	return
 }
@@ -134,12 +273,14 @@ func (rw *responseWriter) Send(v any) (err error) {
 	}
 	switch val.Kind() {
 	case reflect.String:
-		err = rw.write([]byte(val.String()))
+		err = write(rw.rw, []byte(val.String()))
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		err = rw.writeInt(val.Interface())
+		err = writeInt(rw.rw, val.Interface())
 	case reflect.Float32, reflect.Float64:
-		err = rw.writeFloat(val.Interface())
+		err = writeFloat(rw.rw, val.Interface())
+	case reflect.Slice, reflect.Array:
+		err = writeSlice(rw.rw, val.Interface())
 	default:
 		err = fmt.Errorf("can't write %T type, must be a primitive or a pointer that refers to an instantiated primitive", v)
 	}

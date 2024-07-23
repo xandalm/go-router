@@ -84,11 +84,26 @@ func TestSendMethod(t *testing.T) {
 		{"sends uint16 bytes", uint16(1), []byte{0, 1}},
 		{"sends uint32 bytes", uint32(1), []byte{0, 0, 0, 1}},
 		{"sends uint64 bytes", uint64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
-		{"sends *int8 (referenced int8) bytes", pi8, []byte{0}},
-		{"sends **int8 (ref. ref. int8) bytes", ppi8, []byte{0}},
+		{"sends *int8 bytes", pi8, []byte{0}},
+		{"sends **int8 bytes", ppi8, []byte{0}},
 		{"sends float32 bytes", float32(1.0), u32b(math.Float32bits(1.0))},
 		{"sends float64 bytes", float64(1.0), u64b(math.Float64bits(1.0))},
-		{"sends rune bytes", 'A', []byte{0, 0, 0, 65}}, // alright, rune is int32 alias
+		{"sends rune bytes", rune('A'), []byte{0, 0, 0, 65}}, // rune is int32 alias
+		{"sends byte", byte(1), []byte{1}},                   // byte is uint8 alias
+		{"sends []int", []int{1, 1}, append(createPosIntBytes(), createPosIntBytes()...)},
+		{"sends []uint", []uint{1, 1}, append(createPosIntBytes(), createPosIntBytes()...)},
+		{"sends []int8", []int8{1, 1}, append([]byte{1}, []byte{1}...)},
+		{"sends []uint8", []uint8{1, 1}, append([]byte{1}, []byte{1}...)},
+		{"sends []int16", []int16{1, 1}, append(u16b(1), u16b(1)...)},
+		{"sends []uint16", []uint16{1, 1}, append(u16b(1), u16b(1)...)},
+		{"sends []int32", []int32{1, 1}, append(u32b(1), u32b(1)...)},
+		{"sends []uint32", []uint32{1, 1}, append(u32b(1), u32b(1)...)},
+		{"sends []int64", []int64{1, 1}, append(u64b(1), u64b(1)...)},
+		{"sends []uint64", []uint64{1, 1}, append(u64b(1), u64b(1)...)},
+		{"sends []float32", []float32{1, 1}, append(u32b(math.Float32bits(1.0)), u32b(math.Float32bits(1.0))...)},
+		{"sends []float64", []float64{1, 1}, append(u64b(math.Float64bits(1.0)), u64b(math.Float64bits(1.0))...)},
+		{"sends []*int8 bytes", []*int8{pi8, pi8}, []byte{0, 0}},
+		{"sends []**int8 bytes", []**int8{ppi8, ppi8}, []byte{0, 0}},
 	}
 
 	for _, c := range cases {
@@ -107,6 +122,18 @@ func TestSendMethod(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("return error when try to send slice/array with multiple types", func(t *testing.T) {
+		res := httptest.NewRecorder()
+
+		w := ResponseWriter(&responseWriter{rw: res})
+
+		err := w.Send([]any{"a", 1})
+
+		if err != ErrHeterogenicTypeWhileWriting {
+			t.Errorf("didn't get expected error, got %v", err)
+		}
+	})
 }
 
 func TestSendStringMethod(t *testing.T) {
