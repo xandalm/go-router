@@ -24,6 +24,8 @@ type ResponseWriter interface {
 	// type held by [http.ResponseWriter] to modifies a http
 	// response header.
 	SetHeader(key, value string)
+	// Sends byte data from the given value.
+	//
 	// The given value must be one from the basic types
 	// (byte, rune, string, integer types, float types),
 	// or a pointer that reaches to one from the listed types above.
@@ -33,24 +35,28 @@ type ResponseWriter interface {
 	// a basic type, the referred value will be consulted.
 	// The given value will be converted to its byte(s) form.
 	//
-	// Finally call Write method from the [http.ResponseWriter],
-	// that write the response body and complete the http reply.
+	// Finally calls Write method from the [http.ResponseWriter],
+	// which writes the response body and complete the http reply.
 	Send(v any) error
-	// WriteString use [fmt.Fprint] function, then
-	// the given value will be written following the string
-	// representation of the given value.
+	// Sends string data from the given value.
+	//
+	// The method uses [fmt.Fprint] function, then
+	// the given value will be written following its string
+	// representation.
 	//
 	// The call to [fmt.Fprint] results in a call to Write
-	// method from the [http.ResponseWriter], that write
+	// method from the [http.ResponseWriter], which writes
 	// the response body and complete the http reply.
 	SendString(v any) error
-	// WriteJSON tries to write the given value in its JSON
-	// representation using the json.Marshal function.
-	// In this way, the type of the given value can implement
-	// the json.Marshaler interface to customize the JSON result.
+	// Sends the given value in its JSON representation.
 	//
-	// Finally call Write method from the [http.ResponseWriter],
-	// that write the response body and complete the http reply.
+	// The method tries to write the given value a JSON
+	// format using [json.Marshal].
+	// In this way, the type of the given value can implement
+	// [json.Marshaler] to customize the result.
+	//
+	// Finally calls Write method from the [http.ResponseWriter],
+	// which writes the response body and complete the http reply.
 	SendJSON(v any) error
 }
 
