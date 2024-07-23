@@ -13,7 +13,7 @@ import (
 	"reflect"
 )
 
-var ErrHeterogenicTypeWhileWriting = errors.New("only homogeneous slice or array can be written")
+var ErrHeterogenicTypeWhileWriting = errors.New("router: only homogeneous slice or array can be written")
 
 type ResponseWriter interface {
 	// SetStatus calls to WriteHeader method from the
@@ -24,15 +24,19 @@ type ResponseWriter interface {
 	// type held by [http.ResponseWriter] to modifies a http
 	// response header.
 	SetHeader(key, value string)
-	// The given value must be a basic/primitive type
-	// (rune, string, [u]int, [u]int[8|16|32|64], float[32|64]),
-	// or a pointer that reach to one from listed types above.
+	// The given value must be one from the basic types
+	// (byte, rune, string, integer types, float types),
+	// or a pointer that reaches to one from the listed types above.
+	// Also allows to send a homogeneous array/slice where all
+	// elements is a basic type or a pointer that reaches in a basic type.
+	// If the given value is a pointer to an array/slice, as it is for
+	// a basic type, the referred value will be consulted.
 	// The given value will be converted to its byte(s) form.
 	//
 	// Finally call Write method from the [http.ResponseWriter],
 	// that write the response body and complete the http reply.
 	Send(v any) error
-	// WriteString use [fmt.Fprint] function, that way
+	// WriteString use [fmt.Fprint] function, then
 	// the given value will be written following the string
 	// representation of the given value.
 	//
@@ -40,11 +44,10 @@ type ResponseWriter interface {
 	// method from the [http.ResponseWriter], that write
 	// the response body and complete the http reply.
 	SendString(v any) error
-	// WriteJSON tries to write the given value as JSON
+	// WriteJSON tries to write the given value in its JSON
 	// representation using the json.Marshal function.
-	// That way, the type of the given value can implement
-	// the json.Marshaler interface to customize its JSON
-	// representation.
+	// In this way, the type of the given value can implement
+	// the json.Marshaler interface to customize the JSON result.
 	//
 	// Finally call Write method from the [http.ResponseWriter],
 	// that write the response body and complete the http reply.
@@ -195,75 +198,76 @@ func indirectSliceWrite(w io.Writer, v any) (err error) {
 }
 
 func writeSlice(w io.Writer, v any) (err error) {
+	var b []byte
 	switch val := v.(type) {
 	case []int:
 		switch bits.UintSize {
 		case 64:
-			err = write(w, bytestream(val, func(v int) []byte {
+			b = bytestream(val, func(v int) []byte {
 				return u64b(uint64(uint(v)))
-			}))
+			})
 		case 32:
-			err = write(w, bytestream(val, func(v int) []byte {
+			b = bytestream(val, func(v int) []byte {
 				return u32b(uint32(uint(v)))
-			}))
+			})
 		}
 	case []uint:
 		switch bits.UintSize {
 		case 64:
-			err = write(w, bytestream(val, func(v uint) []byte {
+			b = bytestream(val, func(v uint) []byte {
 				return u64b(uint64(v))
-			}))
+			})
 		case 32:
-			err = write(w, bytestream(val, func(v uint) []byte {
+			b = bytestream(val, func(v uint) []byte {
 				return u32b(uint32(v))
-			}))
+			})
 		}
 	case []int8:
-		err = write(w, bytestream(val, func(v int8) []byte {
+		b = bytestream(val, func(v int8) []byte {
 			return []byte{byte(v)}
-		}))
+		})
 	case []uint8:
-		err = write(w, bytestream(val, func(v uint8) []byte {
+		b = bytestream(val, func(v uint8) []byte {
 			return []byte{v}
-		}))
+		})
 	case []int16:
-		err = write(w, bytestream(val, func(v int16) []byte {
+		b = bytestream(val, func(v int16) []byte {
 			return u16b(uint16(v))
-		}))
+		})
 	case []uint16:
-		err = write(w, bytestream(val, func(v uint16) []byte {
+		b = bytestream(val, func(v uint16) []byte {
 			return u16b(v)
-		}))
+		})
 	case []int32:
-		err = write(w, bytestream(val, func(v int32) []byte {
+		b = bytestream(val, func(v int32) []byte {
 			return u32b(uint32(v))
-		}))
+		})
 	case []uint32:
-		err = write(w, bytestream(val, func(v uint32) []byte {
+		b = bytestream(val, func(v uint32) []byte {
 			return u32b(v)
-		}))
+		})
 	case []int64:
-		err = write(w, bytestream(val, func(v int64) []byte {
+		b = bytestream(val, func(v int64) []byte {
 			return u64b(uint64(v))
-		}))
+		})
 	case []uint64:
-		err = write(w, bytestream(val, func(v uint64) []byte {
+		b = bytestream(val, func(v uint64) []byte {
 			return u64b(v)
-		}))
+		})
 	case []float32:
-		err = write(w, bytestream(val, func(v float32) []byte {
+		b = bytestream(val, func(v float32) []byte {
 			return u32b(math.Float32bits(v))
-		}))
+		})
 	case []float64:
-		err = write(w, bytestream(val, func(v float64) []byte {
+		b = bytestream(val, func(v float64) []byte {
 			return u64b(math.Float64bits(v))
-		}))
+		})
 	case []any:
-		err = ErrHeterogenicTypeWhileWriting
+		return ErrHeterogenicTypeWhileWriting
 	default:
-		err = indirectSliceWrite(w, val)
+		return indirectSliceWrite(w, val)
 	}
-	return
+	return write(w, b)
 }
 
 func (rw *responseWriter) Send(v any) (err error) {
