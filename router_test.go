@@ -1634,7 +1634,7 @@ func TestRouter(t *testing.T) {
 
 	router.Get("/greet", &mockHandler{
 		OnHandleFunc: func(w ResponseWriter, r *Request) {
-			fmt.Fprint(w.(*responseWriter).rw, `Hello, Requester`)
+			fmt.Fprint(w.(*responseWriter), `Hello, Requester`)
 		},
 	})
 
@@ -1655,12 +1655,12 @@ func TestRouter(t *testing.T) {
 	})
 
 	nsApi.GetFunc("/users/{id}", func(w ResponseWriter, r *Request) {
-		fmt.Fprint(w.(*responseWriter).rw, r.Params()["id"])
+		fmt.Fprint(w.(*responseWriter), r.Params()["id"])
 	})
 
 	nsApi.PostFunc("/users/{id}", func(w ResponseWriter, r *Request) {
 		payload, _ := io.ReadAll(r.Body)
-		fmt.Fprint(w.(*responseWriter).rw, string(payload))
+		fmt.Fprint(w.(*responseWriter), string(payload))
 	})
 
 	if nsApi == nil {
@@ -1671,15 +1671,15 @@ func TestRouter(t *testing.T) {
 
 	nsOngsPlaces.GetFunc("/{place}", func(w ResponseWriter, r *Request) {
 		if r.Params()["ong"] != "@WeCanDoTogether" {
-			w.(*responseWriter).rw.WriteHeader(http.StatusNotFound)
+			w.(*responseWriter).WriteHeader(http.StatusNotFound)
 			return
 		}
 		switch r.Params()["place"] {
 		case "Brazil":
-			w.(*responseWriter).rw.WriteHeader(http.StatusOK)
-			fmt.Fprint(w.(*responseWriter).rw, "SP, Sao Paulo, Vila Feliz, Rua das Americas, 256")
+			w.(*responseWriter).WriteHeader(http.StatusOK)
+			fmt.Fprint(w.(*responseWriter), "SP, Sao Paulo, Vila Feliz, Rua das Americas, 256")
 		default:
-			w.(*responseWriter).rw.WriteHeader(http.StatusNotFound)
+			w.(*responseWriter).WriteHeader(http.StatusNotFound)
 		}
 	})
 
@@ -1695,7 +1695,7 @@ func TestRouter(t *testing.T) {
 
 	router.Get("/admin/users", &mockHandler{
 		OnHandleFunc: func(w ResponseWriter, r *Request) {
-			fmt.Fprint(w.(*responseWriter).rw, `[]`)
+			fmt.Fprint(w.(*responseWriter), `[]`)
 		},
 	})
 
@@ -1703,10 +1703,10 @@ func TestRouter(t *testing.T) {
 		HandleFunc: func(w ResponseWriter, r *Request, e error) {
 			switch e.Error() {
 			case "Missing authorization in header", "Missing content-type in header":
-				w.(*responseWriter).rw.WriteHeader(http.StatusBadRequest)
-				fmt.Fprint(w.(*responseWriter).rw, e.Error())
+				w.(*responseWriter).WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w.(*responseWriter), e.Error())
 			default:
-				w.(*responseWriter).rw.WriteHeader(http.StatusInternalServerError)
+				w.(*responseWriter).WriteHeader(http.StatusInternalServerError)
 			}
 		},
 	})

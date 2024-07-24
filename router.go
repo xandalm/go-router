@@ -71,7 +71,7 @@ func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 type notFoundHandler struct{}
 
 func (h *notFoundHandler) ServeHTTP(w ResponseWriter, r *Request) {
-	w.(*responseWriter).rw.WriteHeader(http.StatusNotFound)
+	w.(*responseWriter).WriteHeader(http.StatusNotFound)
 }
 
 // Holds a simple request handler that replies HTTP 404 status
@@ -83,7 +83,7 @@ type redirectHandler struct {
 }
 
 func (rh *redirectHandler) ServeHTTP(w ResponseWriter, r *Request) {
-	http.Redirect(w.(*responseWriter).rw, r.Request, rh.url, rh.code)
+	http.Redirect(w.(*responseWriter), r.Request, rh.url, rh.code)
 }
 
 // Creates a redirect handler
@@ -377,7 +377,7 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h, p, params := ro.Handler(r)
 	rr := &Request{params: params, Request: r}
-	ww := &responseWriter{rw: w}
+	ww := &responseWriter{w}
 	var errors []mwError
 	if errors = ro.crossMiddlewares(p, ww, rr); len(errors) > 0 {
 		err := errors[0]

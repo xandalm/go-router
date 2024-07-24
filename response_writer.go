@@ -61,15 +61,15 @@ type ResponseWriter interface {
 }
 
 type responseWriter struct {
-	rw http.ResponseWriter
+	http.ResponseWriter
 }
 
 func (rw *responseWriter) SetStatus(code int) {
-	rw.rw.WriteHeader(code)
+	rw.WriteHeader(code)
 }
 
 func (rw *responseWriter) SetHeader(key, value string) {
-	rw.rw.Header().Set(key, value)
+	rw.Header().Set(key, value)
 }
 
 func u16b(v uint16) []byte {
@@ -283,14 +283,14 @@ func (rw *responseWriter) Send(v any) (err error) {
 	}
 	switch val.Kind() {
 	case reflect.String:
-		err = write(rw.rw, []byte(val.String()))
+		err = write(rw, []byte(val.String()))
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		err = writeInt(rw.rw, val.Interface())
+		err = writeInt(rw, val.Interface())
 	case reflect.Float32, reflect.Float64:
-		err = writeFloat(rw.rw, val.Interface())
+		err = writeFloat(rw, val.Interface())
 	case reflect.Slice, reflect.Array:
-		err = writeSlice(rw.rw, val.Interface())
+		err = writeSlice(rw, val.Interface())
 	default:
 		err = fmt.Errorf("can't write %T type, must be a primitive or a pointer that refers to an instantiated primitive", v)
 	}
@@ -298,7 +298,7 @@ func (rw *responseWriter) Send(v any) (err error) {
 }
 
 func (rw *responseWriter) SendString(v any) error {
-	_, err := fmt.Fprint(rw.rw, v)
+	_, err := fmt.Fprint(rw, v)
 	return err
 }
 

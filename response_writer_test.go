@@ -13,7 +13,7 @@ import (
 func TestSetStatusMethod(t *testing.T) {
 	res := httptest.NewRecorder()
 
-	w := ResponseWriter(&responseWriter{rw: res})
+	w := ResponseWriter(&responseWriter{res})
 
 	want := http.StatusInternalServerError
 	w.SetStatus(want)
@@ -28,7 +28,7 @@ func TestSetStatusMethod(t *testing.T) {
 func TestSetHeaderMethod(t *testing.T) {
 	res := httptest.NewRecorder()
 
-	w := ResponseWriter(&responseWriter{rw: res})
+	w := ResponseWriter(&responseWriter{res})
 
 	want := "application/json"
 	w.SetHeader("Content-Type", want)
@@ -110,7 +110,7 @@ func TestSendMethod(t *testing.T) {
 		t.Run(c.desc, func(t *testing.T) {
 			res := httptest.NewRecorder()
 
-			w := ResponseWriter(&responseWriter{rw: res})
+			w := ResponseWriter(&responseWriter{res})
 
 			err := w.Send(c.value)
 			assertNoError(t, err)
@@ -126,7 +126,7 @@ func TestSendMethod(t *testing.T) {
 	t.Run("return error when try to send slice/array with multiple types", func(t *testing.T) {
 		res := httptest.NewRecorder()
 
-		w := ResponseWriter(&responseWriter{rw: res})
+		w := ResponseWriter(&responseWriter{res})
 
 		err := w.Send([]any{"a", 1})
 
@@ -152,7 +152,7 @@ func TestSendStringMethod(t *testing.T) {
 		t.Run("sends value as string and read from response", func(t *testing.T) {
 			res := httptest.NewRecorder()
 
-			w := ResponseWriter(&responseWriter{rw: res})
+			w := ResponseWriter(&responseWriter{res})
 
 			w.SendString(c.value)
 
@@ -217,7 +217,7 @@ func TestSendJSONMethod(t *testing.T) {
 		t.Run("sends value following json format and read from response", func(t *testing.T) {
 			res := httptest.NewRecorder()
 
-			w := ResponseWriter(&responseWriter{rw: res})
+			w := ResponseWriter(&responseWriter{res})
 
 			w.SendJSON(c.value)
 
