@@ -12,7 +12,7 @@ import (
 
 type Params map[string]string
 
-// Request has a embedded http.Request
+// Request has a embedded [http.Request]
 // in addition to its extra methods
 type Request struct {
 	params Params

@@ -15,6 +15,7 @@ import (
 
 var ErrHeterogenicTypeWhileWriting = errors.New("router: only homogeneous slice or array can be written")
 
+// ResponseWriter has a embedded [http.ResponseWriter]
 type ResponseWriter interface {
 	// SetStatus calls to WriteHeader method from the
 	// [http.ResponseWriter] to modifies the http response
