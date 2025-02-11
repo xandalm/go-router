@@ -35,6 +35,15 @@ var (
 	ErrNilBody          = errors.New("router: nothing to read")
 )
 
+// Verify if the request has body data.
+func (r *Request) HasBody() bool {
+	if r.Body == nil {
+		return false
+	}
+	_, err := r.Body.Read(make([]byte, 0))
+	return err != io.EOF
+}
+
 // Try to parse request body into the v, which
 // must be initialized. Actually v can be a pointer
 // to int (int64), float (float64), string and struct.
@@ -44,7 +53,7 @@ var (
 // into a struct.
 func (r *Request) ParseBodyInto(v any) error {
 
-	if r.Body == nil {
+	if !r.HasBody() {
 		return ErrNilBody
 	}
 
