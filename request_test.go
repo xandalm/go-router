@@ -47,7 +47,7 @@ func TestRequest(t *testing.T) {
 	})
 }
 
-func TestParseBodyInto(t *testing.T) {
+func TestBodyIn(t *testing.T) {
 
 	t.Run("panic if not give pointer", func(t *testing.T) {
 		request := newRequest(http.MethodPost, newDummyURI("/words"), "science")
@@ -60,7 +60,7 @@ func TestParseBodyInto(t *testing.T) {
 		}()
 
 		var bucket string
-		request.ParseBodyInto(bucket)
+		request.BodyIn(bucket)
 	})
 
 	t.Run("panic if give a nil pointer", func(t *testing.T) {
@@ -74,14 +74,14 @@ func TestParseBodyInto(t *testing.T) {
 		}()
 
 		var bucket *string
-		request.ParseBodyInto(bucket)
+		request.BodyIn(bucket)
 	})
 
 	t.Run("parses body into string", func(t *testing.T) {
 		request := newRequest(http.MethodPost, newDummyURI("/words"), "router")
 
 		var bucket string
-		err := request.ParseBodyInto(&bucket)
+		err := request.BodyIn(&bucket)
 
 		assertNoError(t, err)
 
@@ -96,7 +96,7 @@ func TestParseBodyInto(t *testing.T) {
 		request := newRequest(http.MethodPost, newDummyURI("/words"), "science")
 
 		var bucket S
-		err := request.ParseBodyInto(&bucket)
+		err := request.BodyIn(&bucket)
 
 		assertNoError(t, err)
 
@@ -109,7 +109,7 @@ func TestParseBodyInto(t *testing.T) {
 		request := newRequest(http.MethodPut, newDummyURI("/add"), "5")
 
 		var bucket int
-		err := request.ParseBodyInto(&bucket)
+		err := request.BodyIn(&bucket)
 
 		assertNoError(t, err)
 
@@ -124,7 +124,7 @@ func TestParseBodyInto(t *testing.T) {
 		request := newRequest(http.MethodPut, newDummyURI("/add"), "5")
 
 		var bucket I
-		err := request.ParseBodyInto(&bucket)
+		err := request.BodyIn(&bucket)
 
 		assertNoError(t, err)
 
@@ -137,7 +137,7 @@ func TestParseBodyInto(t *testing.T) {
 		request := newRequest(http.MethodPost, newDummyURI("/sub"), "a")
 
 		var bucket int
-		err := request.ParseBodyInto(&bucket)
+		err := request.BodyIn(&bucket)
 		if err != ErrUnsupportedInt {
 			t.Errorf("got error %v, but want %v", err, ErrUnsupportedInt)
 		}
@@ -147,7 +147,7 @@ func TestParseBodyInto(t *testing.T) {
 		request := newRequest(http.MethodPut, newDummyURI("/add"), "3.14")
 
 		var bucket float64
-		err := request.ParseBodyInto(&bucket)
+		err := request.BodyIn(&bucket)
 
 		assertNoError(t, err)
 
@@ -166,7 +166,7 @@ func TestParseBodyInto(t *testing.T) {
 
 		var got Person
 		want := Person{1, "Alex"}
-		err := request.ParseBodyInto(&got)
+		err := request.BodyIn(&got)
 
 		assertNoError(t, err)
 
@@ -180,7 +180,7 @@ func TestParseBodyInto(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPost, newDummyURI("/add"), nil)
 		request := &Request{Request: req}
 		var got int
-		err := request.ParseBodyInto(&got)
+		err := request.BodyIn(&got)
 
 		if err != ErrNilBody {
 			t.Errorf("got error %v but want %v", got, ErrNilBody)

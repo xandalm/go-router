@@ -51,8 +51,7 @@ func (r *Request) HasBody() bool {
 //
 // Only JSON schematized request body can be parsed
 // into a struct.
-func (r *Request) ParseBodyInto(v any) error {
-
+func (r *Request) BodyIn(v any) error {
 	if !r.HasBody() {
 		return ErrNilBody
 	}
