@@ -213,6 +213,8 @@ func TestSendJSONMethod(t *testing.T) {
 		},
 	}
 
+	expectedContentType := "application/json"
+
 	for _, c := range cases {
 		t.Run("sends value following json format and read from response", func(t *testing.T) {
 			res := httptest.NewRecorder()
@@ -223,6 +225,11 @@ func TestSendJSONMethod(t *testing.T) {
 
 			data, _ := io.ReadAll(res.Body)
 			got := string(data)
+
+			gotContentType := res.Header().Get("Content-Type")
+			if gotContentType != expectedContentType {
+				t.Errorf("got Content-Type=%q, but want %q", gotContentType, expectedContentType)
+			}
 
 			if got != c.want {
 				t.Errorf("got %q, but want %q", got, c.want)

@@ -308,6 +308,7 @@ func (rw *responseWriter) SendJSON(v any) error {
 	if err != nil {
 		panic(jsonEncodeError(v))
 	}
+	rw.ResponseWriter.Header().Set("Content-Type", "application/json")
 	return rw.SendString(string(data))
 }
 
