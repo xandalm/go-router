@@ -533,9 +533,9 @@ func (ro *Router) handler(host, path, method string) (p string, h Handler, param
 
 	if h == nil {
 		h = e.mh[MethodAll]
-		if h == nil {
-			return "", nil, nil
-		}
+	}
+	if h == nil {
+		return "", nil, nil
 	}
 
 	matches := e.re.FindStringSubmatch(path)
@@ -1138,16 +1138,16 @@ func func2Handler(f ...func(ResponseWriter, *Request)) []Handler {
 // Allow to register a handler to any request method that matches the pattern.
 // There are 3 ways.
 //
-// It's possible to register the handler to the namespace path + "/", like http&#58;//site.com/nspath/;
-//
-//	namespace.All("/", handler)
-//
-// Or to the namespace path without "/" at the end, like http&#58;//site.com/nspath
+// It's possible to register a handler for the namespace, like http&#58;//site.com/namespace;
 //
 //	namespace.All(handler)
 //
-// Or to a path beyond the namespace path, where the addition path is given by a pattern (accepts params too),
-// like http&#58;//site.com/nspath/addition_path
+// Or to the namespace + / , like http&#58;//site.com/namespace/
+//
+//	namespace.All("/", handler)
+//
+// Or to a path beyond the namespace path, where the addition path is given by a pattern,
+// like http&#58;//site.com/nspath/addition_path. Params are allowed too.
 //
 //	namespace.All("/addition_path", handler) // namespace.All("/addition_path/{param}", handler)
 func (na *namespace) All(v any, handler ...Handler) {
