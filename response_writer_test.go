@@ -68,9 +68,6 @@ func TestSendMethod(t *testing.T) {
 		return []byte{0, 0, 0, 0, 0, 0, 0, 1}
 	}
 
-	pi8 := new(int8)
-	ppi8 := &pi8
-
 	cases := []tcase{
 		{"sends string bytes", "some data", []byte("some data")},
 		{"sends int bytes", int(1), createPosIntBytes()},
@@ -84,8 +81,6 @@ func TestSendMethod(t *testing.T) {
 		{"sends uint16 bytes", uint16(1), []byte{0, 1}},
 		{"sends uint32 bytes", uint32(1), []byte{0, 0, 0, 1}},
 		{"sends uint64 bytes", uint64(1), []byte{0, 0, 0, 0, 0, 0, 0, 1}},
-		{"sends *int8 bytes", pi8, []byte{0}},
-		{"sends **int8 bytes", ppi8, []byte{0}},
 		{"sends float32 bytes", float32(1.0), u32b(math.Float32bits(1.0))},
 		{"sends float64 bytes", float64(1.0), u64b(math.Float64bits(1.0))},
 		{"sends rune bytes", rune('A'), []byte{0, 0, 0, 65}}, // rune is int32 alias
@@ -102,8 +97,6 @@ func TestSendMethod(t *testing.T) {
 		{"sends []uint64", []uint64{1, 1}, append(u64b(1), u64b(1)...)},
 		{"sends []float32", []float32{1, 1}, append(u32b(math.Float32bits(1.0)), u32b(math.Float32bits(1.0))...)},
 		{"sends []float64", []float64{1, 1}, append(u64b(math.Float64bits(1.0)), u64b(math.Float64bits(1.0))...)},
-		{"sends []*int8 bytes", []*int8{pi8, pi8}, []byte{0, 0}},
-		{"sends []**int8 bytes", []**int8{ppi8, ppi8}, []byte{0, 0}},
 	}
 
 	for _, c := range cases {
@@ -137,32 +130,24 @@ func TestSendMethod(t *testing.T) {
 }
 
 func TestSendStringMethod(t *testing.T) {
+	res := httptest.NewRecorder()
+	w := ResponseWriter(&responseWriter{res})
 
-	cases := []struct {
-		value any
-		want  string
-	}{
-		{"some data", "some data"},
-		{1, "1"},
-		{1.2, "1.2"},
-		{-2, "-2"},
+	wantData := "some text"
+
+	w.SendString(wantData)
+
+	data, _ := io.ReadAll(res.Body)
+	gotData := string(data)
+
+	expectedContentType := "text/plain"
+	gotContentType := res.Header().Get("Content-Type")
+	if expectedContentType != gotContentType {
+		t.Errorf("got Content-Type=%q, but want %q", gotContentType, expectedContentType)
 	}
 
-	for _, c := range cases {
-		t.Run("sends value as string and read from response", func(t *testing.T) {
-			res := httptest.NewRecorder()
-
-			w := ResponseWriter(&responseWriter{res})
-
-			w.SendString(c.value)
-
-			data, _ := io.ReadAll(res.Body)
-			got := string(data)
-
-			if got != c.want {
-				t.Errorf("got %q, but want %q", got, c.want)
-			}
-		})
+	if gotData != wantData {
+		t.Fatalf("got %q, but want %q", gotData, wantData)
 	}
 }
 
@@ -235,5 +220,27 @@ func TestSendJSONMethod(t *testing.T) {
 				t.Errorf("got %q, but want %q", got, c.want)
 			}
 		})
+	}
+}
+
+func TestSendHTMLMethod(t *testing.T) {
+	res := httptest.NewRecorder()
+	w := ResponseWriter(&responseWriter{res})
+
+	wantData := "<p>Paragraph</p>"
+
+	w.SendHTML(wantData)
+
+	data, _ := io.ReadAll(res.Body)
+	gotData := string(data)
+
+	expectedContentType := "text/html"
+	gotContentType := res.Header().Get("Content-Type")
+	if expectedContentType != gotContentType {
+		t.Errorf("got Content-Type=%q, but want %q", gotContentType, expectedContentType)
+	}
+
+	if gotData != wantData {
+		t.Fatalf("got %q, but want %q", gotData, wantData)
 	}
 }

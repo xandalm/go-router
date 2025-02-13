@@ -27,38 +27,42 @@ type ResponseWriter interface {
 	SetHeader(key, value string)
 	// Sends byte data from the given value.
 	//
-	// The given value must be one from the basic types
-	// (byte, rune, string, integer types, float types),
-	// or a pointer that reaches to one from the listed types above.
-	// Also allows to send a homogeneous array/slice where all
-	// elements is a basic type or a pointer that reaches in a basic type.
-	// If the given value is a pointer to an array/slice, as it is for
-	// a basic type, the referred value will be consulted.
+	// The given value must be one from the basic types like
+	// numerical types, string types, boolean type or a basic
+	// type homogeneous array/slice.
 	// The given value will be converted to its byte(s) form.
 	//
-	// Finally calls Write method from the [http.ResponseWriter],
-	// which writes the response body and complete the http reply.
+	// The Content-Type attribute from Header will be set to
+	// application/octet-stream.
+	//
+	// Finally, writes the response body and complete the http reply.
 	Send(v any) error
-	// Sends string data from the given value.
+	// Sends the given string data.
 	//
-	// The method uses [fmt.Fprint] function, then
-	// the given value will be written following its string
-	// representation.
+	// The Content-Type attribute from Header will be set to
+	// text/plain.
 	//
-	// The call to [fmt.Fprint] results in a call to Write
-	// method from the [http.ResponseWriter], which writes
-	// the response body and complete the http reply.
-	SendString(v any) error
+	// Finally, writes the response body and complete the http reply.
+	SendString(v string) error
 	// Sends the given value in its JSON representation.
 	//
 	// The method tries to write the given value a JSON
 	// format using [json.Marshal].
 	// In this way, the type of the given value can implement
-	// [json.Marshaler] to customize the result.
+	// [json.Marshaler] to customize it's JSON representation.
 	//
-	// Finally calls Write method from the [http.ResponseWriter],
-	// which writes the response body and complete the http reply.
+	// The Content-Type attribute from Header will be set to
+	// application/json.
+	//
+	// Finally, writes the response body and complete the http reply.
 	SendJSON(v any) error
+	// Sends the given string data.
+	//
+	// The Content-Type attribute from Header will be set to
+	// text/html.
+	//
+	// Finally, writes the response body and complete the http reply.
+	SendHTML(v string) error
 }
 
 type responseWriter struct {
@@ -93,6 +97,11 @@ func u64b(v uint64) []byte {
 
 func write(w io.Writer, b []byte) error {
 	_, err := w.Write(b)
+	return err
+}
+
+func writeString(w io.Writer, s string) error {
+	_, err := fmt.Fprint(w, s)
 	return err
 }
 
@@ -279,12 +288,10 @@ func writeSlice(w io.Writer, v any) (err error) {
 
 func (rw *responseWriter) Send(v any) (err error) {
 	val := reflect.ValueOf(v)
-	for val.Kind() == reflect.Pointer {
-		val = reflect.Indirect(val)
-	}
+
 	switch val.Kind() {
 	case reflect.String:
-		err = write(rw, []byte(val.String()))
+		err = writeString(rw, val.String())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		err = writeInt(rw, val.Interface())
@@ -293,14 +300,14 @@ func (rw *responseWriter) Send(v any) (err error) {
 	case reflect.Slice, reflect.Array:
 		err = writeSlice(rw, val.Interface())
 	default:
-		err = fmt.Errorf("can't write %T type, must be a primitive or a pointer that refers to an instantiated primitive", v)
+		err = fmt.Errorf("can't write %T type, must be a basic type", v)
 	}
 	return
 }
 
-func (rw *responseWriter) SendString(v any) error {
-	_, err := fmt.Fprint(rw, v)
-	return err
+func (rw *responseWriter) SendString(v string) error {
+	rw.ResponseWriter.Header().Set("Content-Type", "text/plain")
+	return writeString(rw, v)
 }
 
 func (rw *responseWriter) SendJSON(v any) error {
@@ -309,5 +316,10 @@ func (rw *responseWriter) SendJSON(v any) error {
 		return fmt.Errorf("router: unable to represent %v as a json", v)
 	}
 	rw.ResponseWriter.Header().Set("Content-Type", "application/json")
-	return rw.SendString(string(data))
+	return write(rw, data)
+}
+
+func (rw *responseWriter) SendHTML(v string) error {
+	rw.ResponseWriter.Header().Set("Content-Type", "text/html")
+	return writeString(rw, v)
 }
