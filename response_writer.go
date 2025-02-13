@@ -306,12 +306,8 @@ func (rw *responseWriter) SendString(v any) error {
 func (rw *responseWriter) SendJSON(v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
-		panic(jsonEncodeError(v))
+		return fmt.Errorf("router: unable to represent %v as a json", v)
 	}
 	rw.ResponseWriter.Header().Set("Content-Type", "application/json")
 	return rw.SendString(string(data))
-}
-
-func jsonEncodeError(v any) string {
-	return fmt.Sprintf("router: unable to represent %v as a json", v)
 }
