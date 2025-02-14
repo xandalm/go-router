@@ -97,11 +97,17 @@ func u64b(v uint64) []byte {
 
 func write(w io.Writer, b []byte) error {
 	_, err := w.Write(b)
-	return err
+	if err != nil {
+		return fmt.Errorf("router: unable to write data, %v", err)
+	}
+	return nil
 }
 
 func writeString(w io.Writer, s string) error {
 	_, err := fmt.Fprint(w, s)
+	if err != nil {
+		return fmt.Errorf("router: unable to write data, %v", err)
+	}
 	return err
 }
 
@@ -300,7 +306,7 @@ func (rw *responseWriter) Send(v any) (err error) {
 	case reflect.Slice, reflect.Array:
 		err = writeSlice(rw, val.Interface())
 	default:
-		err = fmt.Errorf("can't write %T type, must be a basic type", v)
+		err = fmt.Errorf("router: can't write %T type", v)
 	}
 	return
 }
