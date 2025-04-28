@@ -27,9 +27,8 @@ type ResponseWriter interface {
 	SetHeader(key, value string)
 	// Sends byte data from the given value.
 	//
-	// The given value must be one from the basic types like
-	// numerical types, string types, boolean type or a basic
-	// type homogeneous array/slice.
+	// The given value must be from a basic type like
+	// numerical, string, boolean or homogeneous array/slice.
 	// The given value will be converted to its byte(s) form.
 	//
 	// The Content-Type attribute from Header will be set to
@@ -46,10 +45,10 @@ type ResponseWriter interface {
 	SendString(v string) error
 	// Sends the given value in its JSON representation.
 	//
-	// The method tries to write the given value a JSON
+	// The method tries to write the given value in a JSON
 	// format using [json.Marshal].
-	// In this way, the type of the given value can implement
-	// [json.Marshaler] to customize it's JSON representation.
+	// So, it's possible to customize the JSON representation
+	// implementing the [json.Marshaler] interface to the sending type.
 	//
 	// The Content-Type attribute from Header will be set to
 	// application/json.
@@ -159,7 +158,7 @@ func writeFloat(w io.Writer, v any) (err error) {
 
 func bytestream[A any](collec []A, converter func(A) []byte) []byte {
 	b := []byte{}
-	for i := 0; i < len(collec); i++ {
+	for i := range len(collec) {
 		b = append(b, converter(collec[i])...)
 	}
 	return b
@@ -204,7 +203,7 @@ func indirectSliceWrite(w io.Writer, v any) (err error) {
 	err = fn(first)
 	for i := 1; i < collec.Len() && err == nil; i++ {
 		val := collec.Index(i)
-		for j := 0; j < steps; j++ {
+		for range steps {
 			val = reflect.Indirect(val)
 		}
 		if val.Kind() != expectedKind {

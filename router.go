@@ -245,8 +245,7 @@ var paramsSeeker = regexp.MustCompile(`\{[^\/]+\}`)
 //
 // Finally returns the parsed name.
 func parseNamespace(name string) (string, []string) {
-	name = strings.TrimPrefix(name, "/")
-	name = strings.TrimSuffix(name, "/")
+	name = strings.Trim(name, "/")
 
 	var params []string
 	name = paramsSeeker.ReplaceAllStringFunc(name, func(s string) string {
@@ -457,8 +456,7 @@ func crossMiddlewaresLayer(path []string, ns *namespaceList, mw *[]Middleware, w
 }
 
 func (ro *Router) crossMiddlewares(p string, w ResponseWriter, r *Request) []mwError {
-	p = strings.TrimPrefix(p, "/")
-	p = strings.TrimSuffix(p, "/")
+	p = strings.Trim(p, "/")
 
 	errors := <-crossMiddlewaresLayer(strings.Split(p, "/"), ro.ns, &ro.mws, w, r)
 	return errors
@@ -898,7 +896,7 @@ func (ro *Router) UseFunc(v any, mws ...func(ResponseWriter, *Request, NextMiddl
 	}
 
 	_mws := []Middleware{}
-	for i := 0; i < len(mws); i++ {
+	for i := range len(mws) {
 		_mws = append(_mws, MiddlewareFunc(mws[i]))
 	}
 	ro.use(arg1, _mws...)
@@ -1129,7 +1127,7 @@ func (na *namespace) switchRegister(method string, v any, handler ...Handler) {
 
 func func2Handler(f ...func(ResponseWriter, *Request)) []Handler {
 	hds := []Handler{}
-	for i := 0; i < len(f); i++ {
+	for i := range len(f) {
 		hds = append(hds, HandlerFunc(f[i]))
 	}
 	return hds
@@ -1241,7 +1239,7 @@ func (na *namespace) UseFunc(v any, mws ...func(ResponseWriter, *Request, NextMi
 		arg1 = MiddlewareFunc(got)
 	}
 	_mws := []Middleware{}
-	for i := 0; i < len(mws); i++ {
+	for i := range len(mws) {
 		_mws = append(_mws, MiddlewareFunc(mws[i]))
 	}
 
