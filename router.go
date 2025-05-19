@@ -834,16 +834,45 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		nn.p = n
 	}
 
+	var acc string
 	found := ns.FindFunc(func(n *routerNamespace) bool {
-		return strings.HasPrefix(n.name, name+"/")
+		acc = name
+		for acc != "" {
+			if strings.HasPrefix(n.name, acc) {
+				return true
+			}
+			i := strings.LastIndex(acc, "/")
+			if i == -1 {
+				break
+			}
+			acc = acc[0:i]
+		}
+		return false
 	})
-	if found != nil {
+
+	if found == nil {
+		ns.Add(nn)
+	} else {
 		ns.Remove(found)
-		found.name = strings.TrimPrefix(found.name, name+"/")
-		found.p = nn
-		nn.ns.Add(found)
+		found.name = strings.TrimPrefix(found.name, acc+"/")
+		if acc == nn.name {
+			found.p = nn
+			nn.ns.Add(found)
+			ns.Add(nn)
+		} else {
+			nn.name = strings.TrimPrefix(nn.name, acc+"/")
+			p := &routerNamespace{
+				name: acc,
+				r:    ro,
+				ns:   newNamespaceList(),
+			}
+			p.ns.Add(found)
+			p.ns.Add(nn)
+			found.p = p
+			nn.p = p
+			ns.Add(p)
+		}
 	}
-	ns.Add(nn)
 	// for k, v := range ns {
 	// 	last := strings.TrimPrefix(k, name+"/")
 	// 	if last == k {
@@ -1005,17 +1034,46 @@ func (na *routerNamespace) namespace(name string) *routerNamespace {
 		nn.p = n
 	}
 
+	var acc string
 	found := ns.FindFunc(func(n *routerNamespace) bool {
-		return strings.HasPrefix(n.name, name+"/")
+		acc = name
+		for acc != "" {
+			if strings.HasPrefix(n.name, acc) {
+				return true
+			}
+			i := strings.LastIndex(acc, "/")
+			if i == -1 {
+				break
+			}
+			acc = acc[0:i]
+		}
+		return false
 	})
-	if found != nil {
-		ns.Remove(found)
-		found.name = strings.TrimPrefix(found.name, name+"/")
-		found.p = nn
-		nn.ns.Add(found)
-	}
-	ns.Add(nn)
 
+	if found == nil {
+		ns.Add(nn)
+	} else {
+		ns.Remove(found)
+		found.name = strings.TrimPrefix(found.name, acc+"/")
+		if acc == nn.name {
+			found.p = nn
+			nn.ns.Add(found)
+			ns.Add(nn)
+		} else {
+			nn.name = strings.TrimPrefix(nn.name, acc+"/")
+			p := &routerNamespace{
+				name: acc,
+				r:    na.r,
+				p:    na,
+				ns:   newNamespaceList(),
+			}
+			p.ns.Add(found)
+			p.ns.Add(nn)
+			found.p = p
+			nn.p = p
+			ns.Add(p)
+		}
+	}
 	// for k, v := range ns {
 	// 	last := strings.TrimPrefix(k, name+"/")
 	// 	if last == k {

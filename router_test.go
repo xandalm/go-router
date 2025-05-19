@@ -90,6 +90,19 @@ func TestRouter_namespace(t *testing.T) {
 		assertRouterHasNamespace(t, r, "customers")
 		assertRouterNamespaceHasNamespace(t, r.ns.Find("customers"), "{}")
 	})
+	t.Run("if the given namespace and a existing namespace have the same prefix then keep a namespace with the prefix holding 2 namespaces with suffixes each", func(t *testing.T) {
+		r := &Router{}
+		r.namespace("admin/role")
+
+		r.namespace("admin/person")
+		if r.ns.Len() != 1 {
+			t.Fatal("expected that the router has 1 namespace")
+		}
+		assertRouterHasNamespace(t, r, "admin")
+		ns := r.ns.Find("admin")
+		assertRouterNamespaceHasNamespace(t, ns, "person")
+		assertRouterNamespaceHasNamespace(t, ns, "role")
+	})
 	t.Run("do not duplicate or overwritten namespace", func(t *testing.T) {
 		r := &Router{}
 		r.namespace("api")
@@ -852,7 +865,7 @@ func TestNamespace_Namespace(t *testing.T) {
 	t.Run("create namespace from a namespace", func(t *testing.T) {
 		n := &namespace{
 			n: &routerNamespace{
-				"v1",
+				"api",
 				NewRouter(),
 				nil,
 				newNamespaceList(),
@@ -895,6 +908,23 @@ func TestNamespace_Namespace(t *testing.T) {
 
 			assertNamespaceHasNamespace(t, n, "v1")
 			assertNamespaceHasNamespace(t, n.Namespace("v1"), "admin/users")
+		})
+		t.Run("if the given namespace and a existing namespace have the same prefix then keep a namespace with the prefix holding 2 namespaces with suffixes each", func(t *testing.T) {
+			n.Namespace("v2/admin/users")
+
+			n.Namespace("v2/admin/roles")
+
+			if n.n.ns.Len() > 2 {
+				t.Fatalf("there is more than two namespaces at namespace(%p), %v", n, n.n.ns)
+			}
+			assertNamespaceHasNamespace(t, n, "v1")
+			assertNamespaceHasNamespace(t, n, "v2/admin")
+			ns := n.n.ns.Find("v2/admin")
+			if ns.ns.Len() != 2 {
+				t.Fatal("expected that the namespace v2/admin has two namespaces (users and roles)")
+			}
+			assertRouterNamespaceHasNamespace(t, ns, "users")
+			assertRouterNamespaceHasNamespace(t, ns, "roles")
 		})
 		t.Run("split an existent namespace if the given name is its prefix", func(t *testing.T) {
 			n.Namespace("v1/admin")
