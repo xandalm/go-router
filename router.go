@@ -435,16 +435,10 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.ServeHTTP(ww, rr)
 }
 
-func crossMiddlewaresLayer(path []string, ns *namespaceList, mw *[]Middleware, w ResponseWriter, r *Request) chan []mwError {
+func crossMiddlewaresList(mws []Middleware, w ResponseWriter, r *Request) []mwError {
 	iCh := make(chan int, 1)
-	errs := []mwError{}
-
-	var l string // layer
-	if len(path) > 0 {
-		l = path[0]
-	}
-
-	if size := len(*mw); size > 0 {
+	errs := make([]mwError, 0)
+	if size := len(mws); size > 0 {
 		iCh <- 0
 		for loop := true; loop; {
 			select {
@@ -452,14 +446,14 @@ func crossMiddlewaresLayer(path []string, ns *namespaceList, mw *[]Middleware, w
 				if idx >= size {
 					loop = false
 				} else {
-					proceed := new(bool)
-					(*mw)[idx].Intercept(
+					mws[idx].Intercept(
 						w,
 						r,
 						NextMiddlewareCaller(
 							func(e ...error) {
-								*proceed = true
-								if len(e) > 0 {
+								if len(e) == 0 {
+									iCh <- idx + 1
+								} else {
 									stack := debug.Stack()
 									c := new(int)
 									idx := bytes.IndexFunc(stack, func(r rune) bool {
@@ -472,15 +466,11 @@ func crossMiddlewaresLayer(path []string, ns *namespaceList, mw *[]Middleware, w
 										return false
 									})
 									errs = append(errs, mwError{e[0], string(stack[idx+1:])})
+									iCh <- size
 								}
 							},
 						),
 					)
-					if len(errs) > 0 {
-						loop = false
-					} else if *proceed {
-						iCh <- idx + 1
-					}
 				}
 			case <-r.Context().Done():
 				loop = false
@@ -488,13 +478,31 @@ func crossMiddlewaresLayer(path []string, ns *namespaceList, mw *[]Middleware, w
 		}
 	}
 	close(iCh)
-	if fwd := ns.Find(l); fwd != nil {
-		errs = append(
-			errs,
-			<-crossMiddlewaresLayer(path[1:], fwd.ns, &fwd.mws, w, r)...,
-		)
-	}
+	return errs
+}
+
+func crossMiddlewaresLayer(path []string, ns *namespaceList, w ResponseWriter, r *Request) chan []mwError {
 	ch := make(chan []mwError, 1)
+
+	if len(path) == 0 {
+		ch <- []mwError{}
+		return ch
+	}
+
+	n := ns.Find(path[0])
+
+	if n == nil {
+		ch <- []mwError{}
+		return ch
+	}
+
+	errs := crossMiddlewaresList(n.mws, w, r)
+
+	errs = append(
+		errs,
+		<-crossMiddlewaresLayer(path[1:], n.ns, w, r)...,
+	)
+
 	ch <- errs
 	return ch
 }
@@ -502,7 +510,12 @@ func crossMiddlewaresLayer(path []string, ns *namespaceList, mw *[]Middleware, w
 func (ro *Router) crossMiddlewares(p string, w ResponseWriter, r *Request) []mwError {
 	p = strings.Trim(p, "/")
 
-	errors := <-crossMiddlewaresLayer(strings.Split(p, "/"), ro.ns, &ro.mws, w, r)
+	if p == "" {
+		// Requests on [base_url](/)
+		return crossMiddlewaresList(ro.mws, w, r)
+	}
+
+	errors := <-crossMiddlewaresLayer(strings.Split(p, "/"), ro.ns, w, r)
 	return errors
 }
 
@@ -820,6 +833,7 @@ func (ro *Router) namespace(name string) *routerNamespace {
 	nn := &routerNamespace{
 		name: name,
 		r:    ro,
+		p:    n,
 		ns:   newNamespaceList(),
 	}
 
@@ -831,7 +845,6 @@ func (ro *Router) namespace(name string) *routerNamespace {
 		// hold node children (namespace list from this level)
 		ns = n.ns
 		// set node parent to be parent of the new node
-		nn.p = n
 	}
 
 	var acc string
