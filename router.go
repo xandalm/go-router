@@ -344,6 +344,16 @@ func (nsl *namespaceList) Add(n *routerNamespace) {
 	}
 }
 
+type orderedMiddleware struct {
+	order uint
+	Middleware
+}
+
+type orderedHandler struct {
+	order uint
+	Handler
+}
+
 // Like to standard ServeMux, it's a HTTP request multiplexer.
 // Have similar characteristics, however Router brings the
 // possibility to handle params that can be exposed in patterns.
@@ -351,6 +361,7 @@ func (nsl *namespaceList) Add(n *routerNamespace) {
 // The pattern can have params, which are added with its name
 // rounded by brackets, like "/customers/{id}".
 type Router struct {
+	o    uint
 	mu   sync.RWMutex
 	ns   *namespaceList
 	mws  []Middleware
@@ -363,6 +374,12 @@ func NewRouter() *Router {
 	return &Router{
 		ns: newNamespaceList(),
 	}
+}
+
+func (ro *Router) order() uint {
+	o := ro.o
+	ro.o++
+	return o
 }
 
 // Dispatches the request to the correspondent handler.
@@ -381,7 +398,7 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rr := &Request{params: params, Request: r}
 	ww := &responseWriter{w}
 	var errors []mwError
-	if errors = ro.crossMiddlewares(p, ww, rr); len(errors) > 0 {
+	if errors = ro.crossMiddlewares(makeShouldInterceptFn(h), p, ww, rr); len(errors) > 0 {
 		err := errors[0]
 		if ro.meh == nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -435,7 +452,22 @@ func (ro *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.ServeHTTP(ww, rr)
 }
 
-func crossMiddlewaresList(mws []Middleware, w ResponseWriter, r *Request) []mwError {
+type shouldIntercept func(uint) bool
+
+func makeShouldInterceptFn(h Handler) shouldIntercept {
+	switch got := h.(type) {
+	case *orderedHandler:
+		return func(o uint) bool {
+			return got.order > o
+		}
+	default:
+		return func(u uint) bool {
+			return true
+		}
+	}
+}
+
+func crossMiddlewaresList(shouldIntercept shouldIntercept, mws []Middleware, w ResponseWriter, r *Request) []mwError {
 	iCh := make(chan int, 1)
 	errs := make([]mwError, 0)
 	if size := len(mws); size > 0 {
@@ -445,7 +477,7 @@ func crossMiddlewaresList(mws []Middleware, w ResponseWriter, r *Request) []mwEr
 			case idx := <-iCh:
 				if idx >= size {
 					loop = false
-				} else {
+				} else if shouldIntercept(mws[idx].(*orderedMiddleware).order) {
 					mws[idx].Intercept(
 						w,
 						r,
@@ -471,6 +503,8 @@ func crossMiddlewaresList(mws []Middleware, w ResponseWriter, r *Request) []mwEr
 							},
 						),
 					)
+				} else {
+					iCh <- size
 				}
 			case <-r.Context().Done():
 				loop = false
@@ -481,41 +515,36 @@ func crossMiddlewaresList(mws []Middleware, w ResponseWriter, r *Request) []mwEr
 	return errs
 }
 
-func crossMiddlewaresLayer(path []string, ns *namespaceList, w ResponseWriter, r *Request) chan []mwError {
+func crossMiddlewaresLayer(shouldIntercept shouldIntercept, path []string, ns *namespaceList, mws []Middleware, w ResponseWriter, r *Request) chan []mwError {
 	ch := make(chan []mwError, 1)
 
+	errs := crossMiddlewaresList(shouldIntercept, mws, w, r)
+
 	if len(path) == 0 {
-		ch <- []mwError{}
+		ch <- errs
 		return ch
 	}
 
-	n := ns.Find(path[0])
-
-	if n == nil {
-		ch <- []mwError{}
-		return ch
+	if n := ns.Find(path[0]); n != nil {
+		errs = append(
+			errs,
+			<-crossMiddlewaresLayer(shouldIntercept, path[1:], n.ns, n.mws, w, r)...,
+		)
 	}
-
-	errs := crossMiddlewaresList(n.mws, w, r)
-
-	errs = append(
-		errs,
-		<-crossMiddlewaresLayer(path[1:], n.ns, w, r)...,
-	)
 
 	ch <- errs
 	return ch
 }
 
-func (ro *Router) crossMiddlewares(p string, w ResponseWriter, r *Request) []mwError {
+func (ro *Router) crossMiddlewares(shouldIntercept shouldIntercept, p string, w ResponseWriter, r *Request) []mwError {
 	p = strings.Trim(p, "/")
 
-	if p == "" {
-		// Requests on [base_url](/)
-		return crossMiddlewaresList(ro.mws, w, r)
-	}
+	// if p == "" {
+	// 	// Requests on [base_url](/)
+	// 	return crossMiddlewaresList(shouldIntercept, ro.mws, w, r)
+	// }
 
-	errors := <-crossMiddlewaresLayer(strings.Split(p, "/"), ro.ns, w, r)
+	errors := <-crossMiddlewaresLayer(shouldIntercept, strings.Split(p, "/"), ro.ns, ro.mws, w, r)
 	return errors
 }
 
@@ -698,44 +727,44 @@ func (ro *Router) match(path string) *routerEntry {
 	return nil
 }
 
-func (ro *Router) register(pattern string, handler Handler, method string) {
+func (ro *Router) register(p string, h Handler, m string) {
 	ro.mu.Lock()
 	defer ro.mu.Unlock()
 
-	if !isValidPattern(pattern) {
+	if !isValidPattern(p) {
 		panic(PanicMsgInvalidPattern)
 	}
 
-	if handler == nil {
+	if h == nil {
 		panic(PanicMsgEmptyHandler)
 	}
 
-	if pattern == "/" {
+	if p == "/" {
 		// handle for http://example.url and http://example.url/
 		if ro.e != nil {
-			if _, ok := ro.e.mh[method]; ok {
+			if _, ok := ro.e.mh[m]; ok {
 				panic(PanicMsgEndpointDuplication)
 			}
 		}
 		ro.e = &routerEntry{
-			pattern: pattern,
+			pattern: p,
 			re:      regexp.MustCompile(`^\/?$`),
 			mh: map[string]Handler{
-				method: handler,
+				m: &orderedHandler{ro.order(), h},
 			},
 		}
 		return
 	}
 
-	if pattern[0] != '/' {
+	if p[0] != '/' {
 		ro.host = true
 	}
 
-	name, _ := parseNamespace(pattern)
+	name, _ := parseNamespace(p)
 	n := ro.namespace(name)
 
 	var holdEntry **routerEntry
-	if pattern[len(pattern)-1] == '/' {
+	if p[len(p)-1] == '/' {
 		holdEntry = &n.es
 	} else {
 		holdEntry = &n.eu
@@ -743,17 +772,17 @@ func (ro *Router) register(pattern string, handler Handler, method string) {
 
 	if *holdEntry != nil {
 		entry := **holdEntry
-		if _, ok := entry.mh[method]; ok {
+		if _, ok := entry.mh[m]; ok {
 			panic(PanicMsgEndpointDuplication)
 		}
-		entry.mh[method] = handler
+		entry.mh[m] = &orderedHandler{ro.order(), h}
 		return
 	}
 	*holdEntry = &routerEntry{
-		pattern: pattern,
-		re:      createRegExp(pattern),
+		pattern: p,
+		re:      createRegExp(p),
 		mh: map[string]Handler{
-			method: handler,
+			m: &orderedHandler{ro.order(), h},
 		},
 	}
 }
@@ -1000,23 +1029,28 @@ func (ro *Router) use(v any, mws ...Middleware) {
 			panic(PanicMsgMissingMiddleware)
 		}
 		n := ro.namespace(got)
-		n.mws = append(n.mws, mws...)
+		for _, mw := range mws {
+			n.mws = append(n.mws, &orderedMiddleware{ro.order(), mw})
+		}
 	case Middleware:
 		mws = append([]Middleware{got}, mws...)
-		ro.mws = append(ro.mws, mws...)
+		for _, mw := range mws {
+			ro.mws = append(ro.mws, &orderedMiddleware{ro.order(), mw})
+		}
 	default:
 		panic(PanicMsgIncompatibleArgType)
 	}
 }
 
 type routerNamespace struct {
-	name string
-	r    *Router
-	p    *routerNamespace // parent
-	ns   *namespaceList
-	mws  []Middleware
-	es   *routerEntry
-	eu   *routerEntry
+	order uint
+	name  string
+	r     *Router
+	p     *routerNamespace // parent
+	ns    *namespaceList
+	mws   []Middleware
+	es    *routerEntry
+	eu    *routerEntry
 }
 
 func (na *routerNamespace) namespace(name string) *routerNamespace {
@@ -1164,19 +1198,19 @@ func distributeParams(pattern string, params []string) string {
 	})
 }
 
-func (na *namespace) register(pattern string, handler Handler, method string) {
+func (na *namespace) register(p string, h Handler, m string) {
 	na.n.r.mu.Lock()
 	defer na.n.r.mu.Unlock()
 
-	if pattern != "" && !isValidPattern(pattern) {
+	if p != "" && !isValidPattern(p) {
 		panic(PanicMsgInvalidPattern)
 	}
 
-	if handler == nil {
+	if h == nil {
 		panic(PanicMsgEmptyHandler)
 	}
 
-	name, params := parseNamespace(pattern)
+	name, params := parseNamespace(p)
 	params = append(na.params, params...)
 
 	var n *routerNamespace
@@ -1186,7 +1220,7 @@ func (na *namespace) register(pattern string, handler Handler, method string) {
 		n = na.n.namespace(name)
 	}
 
-	slashed := pattern != "" && pattern[len(pattern)-1] == '/'
+	slashed := p != "" && p[len(p)-1] == '/'
 
 	var holdEntry **routerEntry
 	if slashed {
@@ -1197,26 +1231,26 @@ func (na *namespace) register(pattern string, handler Handler, method string) {
 
 	if *holdEntry != nil {
 		entry := **holdEntry
-		if _, ok := entry.mh[method]; ok {
+		if _, ok := entry.mh[m]; ok {
 			panic(PanicMsgEndpointDuplication)
 		}
-		entry.mh[method] = handler
+		entry.mh[m] = &orderedHandler{n.r.order(), h}
 		return
 	}
 
 	if slashed {
-		pattern = n.path() + "/"
+		p = n.path() + "/"
 	} else {
-		pattern = n.path()
+		p = n.path()
 	}
 
-	pattern = distributeParams(pattern, params)
+	p = distributeParams(p, params)
 
 	*holdEntry = &routerEntry{
-		pattern: pattern,
-		re:      createRegExp(pattern),
+		pattern: p,
+		re:      createRegExp(p),
 		mh: map[string]Handler{
-			method: handler,
+			m: &orderedHandler{n.r.order(), h},
 		},
 	}
 }
@@ -1378,5 +1412,7 @@ func (na *namespace) use(v any, mws ...Middleware) {
 	default:
 		panic(PanicMsgIncompatibleArgType)
 	}
-	n.mws = append(n.mws, mws...)
+	for _, mw := range mws {
+		n.mws = append(n.mws, &orderedMiddleware{n.r.order(), mw})
+	}
 }

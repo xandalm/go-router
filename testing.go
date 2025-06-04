@@ -67,6 +67,10 @@ func newDummyURI(path string) string {
 func assertHandler(t testing.TB, got, want Handler) {
 	t.Helper()
 
+	if v, ok := got.(*orderedHandler); ok {
+		got = v.Handler
+	}
+
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got handler %#v, but want %#v", got, want)
 	}
@@ -91,6 +95,10 @@ func assertBody(t testing.TB, response *httptest.ResponseRecorder, want string) 
 
 func assertHandlerType(t testing.TB, want reflect.Type, got Handler) {
 	t.Helper()
+
+	if v, ok := got.(*orderedHandler); ok {
+		got = v.Handler
+	}
 
 	tp := reflect.TypeOf(got)
 	if tp != want {
